@@ -1,202 +1,241 @@
-# CIFAR-10 Classification with GPT-4o Vision
-## CS260 Final Project
+# Trained vs. Zero-Shot: Custom CNN vs. GPT-4o Vision on CIFAR-10
 
-Test GPT-4o Vision's ability to classify CIFAR-10 images by comparing its predictions against ground truth labels.
-
----
+A comprehensive comparison between a custom-trained Convolutional Neural Network (CNN) and OpenAI's GPT-4o Vision model for image classification on the CIFAR-10 dataset.
 
 ## 🎯 Project Overview
 
-This project evaluates GPT-4o Vision's performance on CIFAR-10 image classification by:
-- **Dataset Handling** - Downloading CIFAR-10 using `torchvision`
-- **Image Processing** - Converting PyTorch tensors to PNG format with `PIL`
-- **API Integration** - Sending images to GPT-4o via `openai` Python client
-- **Analysis** - Comparing predictions vs ground truth with visualization using `matplotlib`
-- **Scalability** - Pipeline designed to handle up to 2,000+ images
+This project implements and compares two fundamentally different approaches to image classification:
 
----
+1. **Custom CNN (Trained)**: A PyTorch-based convolutional neural network trained from scratch on 50,000 CIFAR-10 training images
+2. **GPT-4o Vision (Zero-Shot)**: OpenAI's large multimodal model performing zero-shot classification without any CIFAR-10 specific training
 
-## 🚀 Quick Start
+Both models are evaluated on the same stratified subset of 2,000 test images (200 per class) to ensure fair comparison while keeping API costs manageable.
 
-### 1. Install Dependencies
+## 📊 Dataset
 
+**CIFAR-10** contains 60,000 color images (32×32 pixels) across 10 classes:
+- airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck
+
+**Data Split**:
+- Training: 50,000 images (used only by CNN)
+- Test subset: 2,000 images (stratified, 200 per class)
+- Evaluation: Same 2,000-image subset for both models
+
+## 🏗️ CNN Architecture
+
+```
+CustomCNN(
+  (conv1): Conv2d(3, 32, kernel_size=3, padding=1)
+  (bn1): BatchNorm2d(32)
+  (pool1): MaxPool2d(2, 2)
+  
+  (conv2): Conv2d(32, 64, kernel_size=3, padding=1)
+  (bn2): BatchNorm2d(64)
+  (pool2): MaxPool2d(2, 2)
+  
+  (fc1): Linear(4096, 128)
+  (dropout): Dropout(0.5)
+  (fc2): Linear(128, 10)
+)
+```
+
+**Features**:
+- 2 convolutional layers with ReLU activation and max pooling
+- Batch normalization for stable training
+- Fully connected classification head with dropout
+- Cross-entropy loss with Adam optimizer
+- Data augmentation (random flip, random crop)
+
+## 🚀 Installation
+
+### Prerequisites
+- Python 3.8+
+- NVIDIA GPU (recommended for training, but CPU works)
+- CUDA toolkit (if using GPU)
+- OpenAI API key (for GPT-4o evaluation)
+
+### Setup
+
+1. **Clone the repository**
+```bash
+git clone https://github.com/yourusername/cifar10-gpt4o-vision-test.git
+cd cifar10-gpt4o-vision-test
+```
+
+2. **Install dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-This installs:
-- `openai` - OpenAI API client
-- `torch` & `torchvision` - CIFAR-10 dataset loading
-- `pillow` - Image processing
-- `numpy` & `matplotlib` - Visualization
-- `python-dotenv` - Environment variable management
-
-### 2. Get Your OpenAI API Key
-
-1. Go to [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-2. Log in or create an account
-3. Click **"Create new secret key"**
-4. Copy the key
-
-### 3. Configure API Key
-
+3. **Set up OpenAI API key**
 Create a `.env` file in the project root:
+```bash
+OPENAI_API_KEY=your_api_key_here
+```
+
+## 📝 Usage
+
+### Step 1: Train the CNN
 
 ```bash
-OPENAI_API_KEY=your_actual_api_key_here
+python train_cnn.py
 ```
 
-⚠️ **Important**: Never commit your `.env` file to Git! It's already in `.gitignore`.
+This will:
+- Download CIFAR-10 dataset (if not already present)
+- Train the CNN for 20 epochs (~10-30 minutes on GPU)
+- Save the best model to `best_cnn_model.pth`
+- Generate training history plots and metrics
 
-### 4. Run the Pipeline
+**Expected training time**:
+- GPU (NVIDIA RTX 3090): ~10 minutes
+- GPU (NVIDIA GTX 1060): ~20-30 minutes
+- CPU: ~2-3 hours
+
+### Step 2: Compare Models
 
 ```bash
-python cifar10_gpt4o_test.py
+python compare_models.py
 ```
 
----
+This will:
+1. Create a stratified test subset (2,000 images, 200 per class)
+2. Evaluate the trained CNN on the test subset
+3. Evaluate GPT-4o Vision on the same test subset (requires API key)
+4. Generate comprehensive comparison visualizations and metrics
 
-## 📊 What the Script Does
+**GPT-4o evaluation notes**:
+- Makes 2,000 API calls (~30-60 minutes)
+- Estimated cost: $10-20 USD
+- Progress is saved every 50 images (resumable if interrupted)
+- You'll be prompted to confirm before starting
 
-1. **Downloads CIFAR-10** - Automatically downloads the test dataset (~170 MB)
-2. **Selects Images** - Picks sample images (default: indices 0-4)
-3. **Converts Format** - Transforms PyTorch tensors → PNG bytes (upscaled to 224×224)
-4. **Calls GPT-4o Vision** - Sends images to OpenAI API for classification
-5. **Compares Results** - Shows prediction vs ground truth
-6. **Visualizes** - Saves comparison image as `cifar10_gpt4o_results.png`
+### Step 3: View Results
 
----
+All results are saved as PNG images and text files:
+- `training_history.png` - Training and validation curves
+- `cnn_confusion_matrix.png` - CNN prediction confusion matrix
+- `gpt4o_confusion_matrix.png` - GPT-4o prediction confusion matrix
+- `accuracy_comparison.png` - Overall and per-class accuracy comparison
+- `cnn_feature_maps.png` - Visualization of learned CNN features
+- `failure_cases.png` - Interesting cases where models succeed/fail
+- `comparison_report.txt` - Detailed metrics and classification reports
 
-## 🎨 Output Example
+## 📈 Expected Results
 
-```
-🚀 Starting CIFAR-10 + GPT-4o Vision Pipeline
+Based on typical performance:
 
-📦 Downloading CIFAR-10 dataset...
-✅ Downloaded! Test dataset size: 10000
+| Model | Expected Accuracy | Training Time | Inference Time (2000 images) |
+|-------|------------------|---------------|------------------------------|
+| CNN (Trained) | 70-75% | 10-30 min (GPU) | < 1 minute |
+| GPT-4o (Zero-Shot) | 85-95% | N/A | 30-60 minutes |
 
-🖼️  Selected 5 images
-Ground-truth labels: ['cat', 'ship', 'ship', 'airplane', 'frog']
+**Key Findings**:
+- GPT-4o generally achieves higher accuracy due to massive pretraining
+- CNN is much faster at inference time
+- CNN performance is limited by small training dataset and simple architecture
+- GPT-4o excels at fine-grained distinctions (e.g., cat vs dog)
+- CNN may struggle with classes that require semantic understanding
 
-✅ OpenAI API key loaded
+## 📊 Metrics Reported
 
-🔍 Testing images with GPT-4o Vision...
+1. **Overall Accuracy**: Percentage of correct predictions
+2. **Per-Class Accuracy**: Accuracy breakdown for each of 10 classes
+3. **Precision, Recall, F1-Score**: Standard classification metrics
+4. **Confusion Matrices**: Visual representation of prediction patterns
+5. **Feature Maps**: Visualization of CNN learned features
+6. **Failure Analysis**: Examples where each model succeeds/fails
 
-Processing image 0... ✅ True: cat | Predicted: cat
-Processing image 1... ✅ True: ship | Predicted: ship
-Processing image 2... ❌ True: ship | Predicted: boat
-Processing image 3... ✅ True: airplane | Predicted: airplane
-Processing image 4... ✅ True: frog | Predicted: frog
+## 🔧 Configuration
 
-📈 Accuracy: 4/5 (80.0%)
-
-🎨 Creating visualization...
-📊 Results saved to cifar10_gpt4o_results.png
-
-🎉 Pipeline complete!
-```
-
----
-
-## 🔧 Customization
-
-### Test Different Images
-
-Edit the `sample_indices` in `cifar10_gpt4o_test.py`:
+### Training Hyperparameters (in `train_cnn.py`)
 
 ```python
-# Line ~160
-sample_indices = [0, 1, 2, 3, 4]  # Change these!
+BATCH_SIZE = 128
+EPOCHS = 20
+LEARNING_RATE = 0.001
 ```
 
-### Scale to 2,000 Images
-
-To test more images, modify:
+### Test Subset Size (in `compare_models.py`)
 
 ```python
-import random
-sample_indices = random.sample(range(10000), 2000)  # Random 2000 images
+num_samples = 2000  # Total test images (200 per class)
 ```
 
-⚠️ **Cost Warning**: GPT-4o Vision costs ~$0.01 per image. Testing 2,000 images ≈ $20.
+Adjust these if needed, but note:
+- Larger batch size requires more GPU memory
+- More epochs may improve accuracy but takes longer
+- Larger test subset increases API costs for GPT-4o evaluation
 
----
-
-## 📂 Project Structure
+## 💾 File Structure
 
 ```
-CS260 Final Project/
-├── cifar10_gpt4o_test.py    # Main pipeline script
-├── requirements.txt          # Python dependencies
-├── .env                      # Your API key (create this!)
-├── .gitignore               # Git ignore rules
-├── README.md                # This file
-├── data/                    # CIFAR-10 dataset (auto-downloaded)
-└── cifar10_gpt4o_results.png # Visualization output
+cifar10-gpt4o-vision-test/
+├── train_cnn.py              # Train the custom CNN
+├── compare_models.py          # Compare CNN vs GPT-4o
+├── cifar10_gpt4o_test.py     # Original GPT-4o test script
+├── requirements.txt           # Python dependencies
+├── README.md                  # This file
+├── .env                       # OpenAI API key (create this)
+├── data/                      # CIFAR-10 dataset (auto-downloaded)
+├── best_cnn_model.pth        # Trained CNN model (generated)
+├── training_history.json      # Training metrics (generated)
+├── stratified_test_indices.json  # Test subset indices (generated)
+├── gpt4o_progress.json       # GPT-4o evaluation progress (generated)
+└── *.png, *.txt              # Results and visualizations (generated)
 ```
 
----
+## 🎓 Discussion: Trained vs Zero-Shot
 
-## 🐛 Troubleshooting
+### CNN Strengths
+- ✅ Fast inference (< 1ms per image)
+- ✅ Deterministic and reproducible
+- ✅ Can be fine-tuned for specific domains
+- ✅ No API costs or internet dependency
+- ✅ Complete control over architecture and training
 
-### "OPENAI_API_KEY not found"
-- Make sure `.env` exists in the project root
-- Check that it contains `OPENAI_API_KEY=your_key`
-- Restart your terminal/IDE after creating `.env`
+### CNN Weaknesses
+- ❌ Requires labeled training data
+- ❌ Limited by training dataset size and quality
+- ❌ Poor generalization to novel classes
+- ❌ Training time and computational resources needed
 
-### "Rate limit exceeded"
-- OpenAI has rate limits (e.g., 500 requests/min)
-- Add a delay between requests: `time.sleep(0.5)` after each API call
+### GPT-4o Vision Strengths
+- ✅ Superior accuracy from massive pretraining
+- ✅ Zero-shot capability (no training needed)
+- ✅ Strong semantic understanding
+- ✅ Can leverage world knowledge
+- ✅ Generalizes well to novel concepts
 
-### "Invalid API key"
-- Verify your key at [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-- Make sure there are no extra spaces in `.env`
+### GPT-4o Vision Weaknesses
+- ❌ Slow inference (~1-2 seconds per image)
+- ❌ API costs (~$0.005-0.01 per image)
+- ❌ Requires internet connection
+- ❌ Black box (no interpretability)
+- ❌ Non-deterministic outputs
 
----
+## 🤝 Contributing
 
-## 📝 CIFAR-10 Classes
+Feel free to open issues or submit pull requests for:
+- Architecture improvements
+- Better hyperparameter tuning
+- Additional visualizations
+- Extended comparisons (other models, datasets)
 
-The dataset contains 10 classes:
-1. airplane
-2. automobile
-3. bird
-4. cat
-5. deer
-6. dog
-7. frog
-8. horse
-9. ship
-10. truck
+## 📄 License
 
----
+MIT License - feel free to use this code for research or educational purposes.
 
-## 🎓 Next Steps
+## 🙏 Acknowledgments
 
-- **Analyze Results**: Which classes does GPT-4o struggle with?
-- **Compare Models**: Test GPT-4o-mini vs GPT-4o
-- **Batch Processing**: Implement concurrent API calls for faster processing
-- **Prompt Engineering**: Try different prompts to improve accuracy
-- **Error Analysis**: Visualize misclassified images
+- CIFAR-10 dataset: [Learning Multiple Layers of Features from Tiny Images](https://www.cs.toronto.edu/~kriz/cifar.html), Alex Krizhevsky, 2009
+- PyTorch framework: [PyTorch](https://pytorch.org/)
+- OpenAI GPT-4o Vision: [OpenAI API](https://platform.openai.com/)
 
----
+## 📧 Contact
 
-## 📚 Technologies Used
-
-- **Python 3.8+**
-- **PyTorch & torchvision** - Dataset loading
-- **OpenAI API** - GPT-4o Vision
-- **PIL (Pillow)** - Image processing
-- **NumPy** - Array operations
-- **Matplotlib** - Visualization
+For questions or feedback, please open an issue on GitHub.
 
 ---
 
-## ⚖️ License
-
-For educational use (CS260 Final Project).
-
----
-
-**Questions?** Check the code comments or modify the script to experiment!
-
-
+**Happy experimenting! 🚀**
