@@ -11,13 +11,14 @@ env/
 venv/
 ENV/
 
-# CIFAR-10 data
+# CIFAR-10 data (large, auto-downloads)
 data/
 
-# Results
-*.png
-*.jpg
-*.jpeg
+# NOTE: We INCLUDE these result files for reproducibility:
+# - *.png (figures, visualizations)
+# - *.pth (trained model weights)
+# - *.json (metrics, indices, GPT-4o results)
+# - *.txt (reports)
 
 # IDE
 .vscode/

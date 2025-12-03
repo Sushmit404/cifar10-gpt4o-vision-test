@@ -1,6 +1,9 @@
 """
 CIFAR-10 Custom CNN Training Script
 Part 1: Train a custom CNN on CIFAR-10 with GPU support
+
+Evaluation uses a fixed stratified subset of 2,000 test images (200 per class)
+to ensure fair comparison with GPT-4o Vision.
 """
 
 import torch
@@ -12,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import json
+import os
 
 # Check for GPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -79,6 +83,72 @@ class CustomCNN(nn.Module):
         return features
 
 
+# CIFAR-10 class names
+CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
+           'dog', 'frog', 'horse', 'ship', 'truck']
+
+
+def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
+    """
+    Create a stratified subset of test data (200 images per class)
+    
+    This ensures fair comparison between CNN and GPT-4o by using
+    the exact same test images for both models.
+    
+    Args:
+        test_dataset: CIFAR-10 test dataset
+        num_samples: Total number of samples (must be divisible by 10)
+        seed: Random seed for reproducibility
+    
+    Returns:
+        List of indices for the stratified subset
+    """
+    indices_file = 'stratified_test_indices.json'
+    
+    # Load existing indices if available
+    if os.path.exists(indices_file):
+        print(f"📂 Loading existing stratified test indices from {indices_file}...")
+        with open(indices_file, 'r') as f:
+            indices = json.load(f)
+        print(f"   ✅ Loaded {len(indices)} indices (200 per class)")
+        return indices
+    
+    # Create new stratified subset
+    np.random.seed(seed)
+    samples_per_class = num_samples // 10
+    
+    print(f"📊 Creating stratified test subset...")
+    print(f"   Total samples: {num_samples}")
+    print(f"   Samples per class: {samples_per_class}")
+    
+    # Group indices by class
+    class_indices = {i: [] for i in range(10)}
+    for idx in range(len(test_dataset)):
+        _, label = test_dataset[idx]
+        class_indices[label].append(idx)
+    
+    # Sample from each class
+    stratified_indices = []
+    for class_idx in range(10):
+        class_samples = np.random.choice(
+            class_indices[class_idx], 
+            samples_per_class, 
+            replace=False
+        )
+        stratified_indices.extend(class_samples.tolist())
+    
+    # Shuffle the combined indices
+    np.random.shuffle(stratified_indices)
+    stratified_indices = [int(i) for i in stratified_indices]  # Ensure JSON serializable
+    
+    # Save indices for reproducibility
+    with open(indices_file, 'w') as f:
+        json.dump(stratified_indices, f)
+    print(f"   ✅ Stratified subset created and saved to {indices_file}")
+    
+    return stratified_indices
+
+
 def get_data_loaders(batch_size=128):
     """Load CIFAR-10 training and test datasets"""
     
@@ -90,10 +160,9 @@ def get_data_loaders(batch_size=128):
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
     ])
     
-    # No augmentation for test
+    # No augmentation for test - normalization applied in evaluate() for flexibility
     test_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
+        transforms.ToTensor()
     ])
     
     # Download datasets
@@ -102,12 +171,11 @@ def get_data_loaders(batch_size=128):
     test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=test_transform)
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
     
     print(f"   Training samples: {len(train_dataset)}")
-    print(f"   Test samples: {len(test_dataset)}")
+    print(f"   Test samples: {len(test_dataset)} (will use 2,000 stratified subset for evaluation)")
     
-    return train_loader, test_loader
+    return train_loader, test_dataset  # Return dataset instead of loader for stratified sampling
 
 
 def train_one_epoch(model, train_loader, criterion, optimizer, device):
@@ -141,29 +209,40 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device):
     return running_loss / total, 100. * correct / total
 
 
-def evaluate(model, test_loader, criterion, device):
-    """Evaluate model on test set"""
+def evaluate(model, test_dataset, indices, criterion, device):
+    """Evaluate model on stratified test subset (2,000 images)"""
     model.eval()
     running_loss = 0.0
     correct = 0
     total = 0
     
+    # Normalization transform
+    normalize = transforms.Normalize(
+        (0.4914, 0.4822, 0.4465), 
+        (0.2470, 0.2435, 0.2616)
+    )
+    
     with torch.no_grad():
-        for inputs, labels in tqdm(test_loader, desc='Evaluating', leave=False):
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+        for idx in tqdm(indices, desc='Evaluating', leave=False):
+            img, label = test_dataset[idx]
+            
+            # Normalize and add batch dimension
+            img_normalized = normalize(img).unsqueeze(0).to(device)
+            label_tensor = torch.tensor([label]).to(device)
+            
+            outputs = model(img_normalized)
+            loss = criterion(outputs, label_tensor)
             
             running_loss += loss.item()
             _, predicted = outputs.max(1)
-            total += labels.size(0)
-            correct += predicted.eq(labels).sum().item()
+            total += 1
+            correct += predicted.eq(label_tensor).sum().item()
     
     return running_loss / total, 100. * correct / total
 
 
-def train_model(model, train_loader, test_loader, epochs=20, lr=0.001):
-    """Train the CNN model"""
+def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0.001):
+    """Train the CNN model with evaluation on stratified 2,000 test subset"""
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
@@ -178,6 +257,7 @@ def train_model(model, train_loader, test_loader, epochs=20, lr=0.001):
     best_acc = 0.0
     
     print(f"\n🚀 Starting training for {epochs} epochs...")
+    print(f"   Evaluating on {len(test_indices)} stratified test images (same as GPT-4o)")
     print("=" * 70)
     
     for epoch in range(epochs):
@@ -187,8 +267,8 @@ def train_model(model, train_loader, test_loader, epochs=20, lr=0.001):
         # Train
         train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
         
-        # Evaluate
-        test_loss, test_acc = evaluate(model, test_loader, criterion, device)
+        # Evaluate on stratified subset
+        test_loss, test_acc = evaluate(model, test_dataset, test_indices, criterion, device)
         
         # Update scheduler
         scheduler.step()
@@ -201,7 +281,7 @@ def train_model(model, train_loader, test_loader, epochs=20, lr=0.001):
         
         # Print results
         print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
-        print(f"Test Loss:  {test_loss:.4f} | Test Acc:  {test_acc:.2f}%")
+        print(f"Test Loss:  {test_loss:.4f} | Test Acc:  {test_acc:.2f}% (2,000 images)")
         
         # Save best model
         if test_acc > best_acc:
@@ -211,11 +291,12 @@ def train_model(model, train_loader, test_loader, epochs=20, lr=0.001):
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'test_acc': test_acc,
+                'test_subset_size': len(test_indices),
             }, 'best_cnn_model.pth')
             print(f"✅ Best model saved! (Test Acc: {test_acc:.2f}%)")
     
     print("\n" + "=" * 70)
-    print(f"🎉 Training complete! Best test accuracy: {best_acc:.2f}%")
+    print(f"🎉 Training complete! Best test accuracy: {best_acc:.2f}% (on 2,000 stratified test images)")
     
     return history
 
@@ -258,9 +339,13 @@ def main():
     BATCH_SIZE = 128
     EPOCHS = 20
     LEARNING_RATE = 0.001
+    NUM_TEST_SAMPLES = 2000  # Stratified subset for fair comparison with GPT-4o
     
     # Load data
-    train_loader, test_loader = get_data_loaders(BATCH_SIZE)
+    train_loader, test_dataset = get_data_loaders(BATCH_SIZE)
+    
+    # Create/load stratified test subset (same 2,000 images used for GPT-4o)
+    test_indices = create_stratified_test_subset(test_dataset, num_samples=NUM_TEST_SAMPLES)
     
     # Create model
     print("\n🏗️  Building model...")
@@ -273,7 +358,8 @@ def main():
     print(f"   Trainable parameters: {trainable_params:,}")
     
     # Train model
-    history = train_model(model, train_loader, test_loader, epochs=EPOCHS, lr=LEARNING_RATE)
+    history = train_model(model, train_loader, test_dataset, test_indices, 
+                         epochs=EPOCHS, lr=LEARNING_RATE)
     
     # Plot training history
     print("\n📈 Plotting training history...")
@@ -288,6 +374,8 @@ def main():
     print(f"   Best model saved to: best_cnn_model.pth")
     print(f"   Training history plot: training_history.png")
     print(f"   Training history data: training_history.json")
+    print(f"   Stratified test indices: stratified_test_indices.json")
+    print(f"\n📊 Evaluation used {NUM_TEST_SAMPLES} stratified test images (same as GPT-4o)")
 
 
 if __name__ == "__main__":
