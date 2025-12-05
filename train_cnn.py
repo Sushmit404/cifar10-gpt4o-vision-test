@@ -71,6 +71,7 @@ import numpy as np
 from tqdm import tqdm
 import json
 import os
+from scipy.optimize import curve_fit
 
 
 # =============================================================================
@@ -429,6 +430,9 @@ class CustomCNN(nn.Module):
 CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
            'dog', 'frog', 'horse', 'ship', 'truck']
 
+# Results directory for all output files
+RESULTS_DIR = 'results_cnn'
+
 
 def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     """
@@ -445,7 +449,9 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     Returns:
         List of indices for the stratified subset
     """
-    indices_file = 'stratified_test_indices.json'
+    # Ensure results directory exists
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    indices_file = os.path.join(RESULTS_DIR, 'stratified_test_indices.json')
     
     # Load existing indices if available
     if os.path.exists(indices_file):
@@ -729,7 +735,10 @@ def final_evaluation_with_analysis(model, test_dataset, indices, device):
     }
 
 
-def plot_confusion_matrix(cm, class_names, save_path='confusion_matrix.png'):
+def plot_confusion_matrix(cm, class_names, save_path=None):
+    """Plot confusion matrix with default path in results directory"""
+    if save_path is None:
+        save_path = os.path.join(RESULTS_DIR, 'confusion_matrix.png')
     """
     Visualize the confusion matrix as a heatmap.
     
@@ -819,13 +828,14 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0
         # Save best model
         if test_acc > best_acc:
             best_acc = test_acc
+            model_path = os.path.join(RESULTS_DIR, 'best_cnn_model.pth')
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'test_acc': test_acc,
                 'test_subset_size': len(test_indices),
-            }, 'best_cnn_model.pth')
+            }, model_path)
             print(f"Best model saved! (Test Acc: {test_acc:.2f}%)")
     
     print("\n" + "=" * 70)
@@ -834,31 +844,185 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0
     return history
 
 
-def plot_training_history(history):
-    """Plot training history"""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+def plot_training_history(history, epochs=20):
+    """
+    Plot training history with mathematical convergence analysis.
     
-    # Loss plot
-    ax1.plot(history['train_loss'], label='Train Loss', marker='o')
-    ax1.plot(history['test_loss'], label='Test Loss', marker='s')
-    ax1.set_xlabel('Epoch')
-    ax1.set_ylabel('Loss')
-    ax1.set_title('Training and Test Loss')
+    Mathematical Indicators:
+    1. Loss Decay Rate: L(t) ≈ L₀·e^(-αt) - exponential convergence
+    2. Convergence Rate: |acc(t) - acc(t-1)| - rate of improvement
+    3. Overfitting Gap: train_acc - test_acc - generalization gap
+    4. Learning Rate Schedule: step decay visualization
+    """
+    
+    fig = plt.figure(figsize=(16, 10))
+    gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
+    
+    epochs_list = list(range(1, len(history['train_loss']) + 1))
+    
+    # =====================================================================
+    # 1. Loss Curves (with exponential fit)
+    # =====================================================================
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.plot(epochs_list, history['train_loss'], label='Train Loss', marker='o', linewidth=2)
+    ax1.plot(epochs_list, history['test_loss'], label='Test Loss', marker='s', linewidth=2)
+    
+    # Fit exponential decay: L(t) = a·e^(-bt) + c
+    try:
+        def exp_decay(t, a, b, c):
+            return a * np.exp(-b * np.array(t)) + c
+        
+        # Fit to test loss (more stable)
+        if len(history['test_loss']) >= 5:
+            popt, _ = curve_fit(exp_decay, epochs_list, history['test_loss'], 
+                              p0=[history['test_loss'][0], 0.1, history['test_loss'][-1]])
+            fit_epochs = np.linspace(1, len(history['test_loss']), 100)
+            fit_loss = exp_decay(fit_epochs, *popt)
+            ax1.plot(fit_epochs, fit_loss, '--', color='red', alpha=0.5, 
+                    label=f'Exp Fit: L(t)={popt[0]:.3f}·e^(-{popt[1]:.3f}t)+{popt[2]:.3f}')
+            ax1.text(0.05, 0.95, f'Decay Rate α = {popt[1]:.4f}', 
+                    transform=ax1.transAxes, verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    except:
+        pass
+    
+    ax1.set_xlabel('Epoch', fontsize=11)
+    ax1.set_ylabel('Loss', fontsize=11)
+    ax1.set_title('Loss Convergence: L(t) ≈ L₀·e^(-αt)', fontsize=12, fontweight='bold')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
-    # Accuracy plot
-    ax2.plot(history['train_acc'], label='Train Acc', marker='o')
-    ax2.plot(history['test_acc'], label='Test Acc', marker='s')
-    ax2.set_xlabel('Epoch')
-    ax2.set_ylabel('Accuracy (%)')
-    ax2.set_title('Training and Test Accuracy')
+    # =====================================================================
+    # 2. Accuracy Curves
+    # =====================================================================
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.plot(epochs_list, history['train_acc'], label='Train Acc', marker='o', linewidth=2)
+    ax2.plot(epochs_list, history['test_acc'], label='Test Acc', marker='s', linewidth=2)
+    
+    # Add GPT-4o target range (85-95%)
+    ax2.axhspan(85, 95, alpha=0.2, color='green', label='GPT-4o Range (85-95%)')
+    ax2.axhline(85, color='green', linestyle='--', alpha=0.5, linewidth=1)
+    ax2.axhline(95, color='green', linestyle='--', alpha=0.5, linewidth=1)
+    
+    # Final accuracy annotation
+    final_acc = history['test_acc'][-1]
+    ax2.annotate(f'Final: {final_acc:.2f}%', 
+                xy=(len(history['test_acc']), final_acc),
+                xytext=(10, 10), textcoords='offset points',
+                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7),
+                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
+    
+    ax2.set_xlabel('Epoch', fontsize=11)
+    ax2.set_ylabel('Accuracy (%)', fontsize=11)
+    ax2.set_title('Accuracy Convergence', fontsize=12, fontweight='bold')
+    ax2.set_ylim([0, 100])
     ax2.legend()
     ax2.grid(True, alpha=0.3)
     
+    # =====================================================================
+    # 3. Convergence Rate: |acc(t) - acc(t-1)|
+    # =====================================================================
+    ax3 = fig.add_subplot(gs[1, 0])
+    if len(history['test_acc']) > 1:
+        convergence_rate = np.abs(np.diff(history['test_acc']))
+        ax3.plot(epochs_list[1:], convergence_rate, marker='o', color='purple', linewidth=2)
+        ax3.axhline(0.1, color='red', linestyle='--', alpha=0.5, label='Convergence threshold (0.1%)')
+        ax3.set_xlabel('Epoch', fontsize=11)
+        ax3.set_ylabel('|Δ Accuracy| (%)', fontsize=11)
+        ax3.set_title('Convergence Rate: |acc(t) - acc(t-1)|', fontsize=12, fontweight='bold')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        ax3.set_yscale('log')
+    
+    # =====================================================================
+    # 4. Overfitting Gap: train_acc - test_acc
+    # =====================================================================
+    ax4 = fig.add_subplot(gs[1, 1])
+    overfitting_gap = np.array(history['train_acc']) - np.array(history['test_acc'])
+    ax4.plot(epochs_list, overfitting_gap, marker='o', color='orange', linewidth=2)
+    ax4.axhline(0, color='black', linestyle='-', alpha=0.3)
+    ax4.fill_between(epochs_list, 0, overfitting_gap, alpha=0.3, color='orange')
+    ax4.set_xlabel('Epoch', fontsize=11)
+    ax4.set_ylabel('Train Acc - Test Acc (%)', fontsize=11)
+    ax4.set_title('Generalization Gap (Overfitting Indicator)', fontsize=12, fontweight='bold')
+    ax4.grid(True, alpha=0.3)
+    
+    # =====================================================================
+    # 5. Learning Rate Schedule
+    # =====================================================================
+    ax5 = fig.add_subplot(gs[2, 0])
+    # Calculate LR schedule: lr * (gamma ^ floor(epoch / step_size))
+    initial_lr = 0.001
+    step_size = 10
+    gamma = 0.1
+    lr_schedule = [initial_lr * (gamma ** (epoch // step_size)) for epoch in epochs_list]
+    ax5.plot(epochs_list, lr_schedule, marker='s', color='blue', linewidth=2)
+    ax5.set_xlabel('Epoch', fontsize=11)
+    ax5.set_ylabel('Learning Rate', fontsize=11)
+    ax5.set_title(f'LR Schedule: lr(t) = lr₀ · γ^⌊t/{step_size}⌋, γ={gamma}', 
+                  fontsize=12, fontweight='bold')
+    ax5.set_yscale('log')
+    ax5.grid(True, alpha=0.3)
+    
+    # =====================================================================
+    # 6. Mathematical Summary Statistics
+    # =====================================================================
+    ax6 = fig.add_subplot(gs[2, 1])
+    ax6.axis('off')
+    
+    # Calculate statistics
+    final_train_loss = history['train_loss'][-1]
+    final_test_loss = history['test_loss'][-1]
+    final_train_acc = history['train_acc'][-1]
+    final_test_acc = history['test_acc'][-1]
+    best_test_acc = max(history['test_acc'])
+    best_epoch = history['test_acc'].index(best_test_acc) + 1
+    
+    # Loss improvement
+    loss_improvement = (history['test_loss'][0] - final_test_loss) / history['test_loss'][0] * 100
+    
+    # Accuracy improvement rate (last 5 epochs)
+    if len(history['test_acc']) >= 5:
+        recent_improvement = history['test_acc'][-1] - history['test_acc'][-5]
+    else:
+        recent_improvement = 0
+    
+    summary_text = f"""
+MATHEMATICAL CONVERGENCE ANALYSIS
+{'='*50}
+
+Loss Function:
+  Initial Loss: {history['test_loss'][0]:.4f}
+  Final Loss:   {final_test_loss:.4f}
+  Improvement:  {loss_improvement:.2f}%
+  
+Accuracy Function:
+  Final Accuracy: {final_test_acc:.2f}%
+  Best Accuracy:  {best_test_acc:.2f}% (Epoch {best_epoch})
+  Recent Δ (last 5): {recent_improvement:+.2f}%
+  
+Generalization:
+  Train Acc: {final_train_acc:.2f}%
+  Test Acc:  {final_test_acc:.2f}%
+  Gap:       {overfitting_gap[-1]:.2f}%
+  
+Convergence Status:
+  {'✓ Converged' if len(history['test_acc']) > 5 and recent_improvement < 0.5 else '→ Still improving'}
+  
+Target Comparison:
+  Current: {final_test_acc:.2f}%
+  GPT-4o:  85-95%
+  Gap:     {85 - final_test_acc:.2f}% to reach GPT-4o range
+    """
+    
+    ax6.text(0.1, 0.5, summary_text, fontsize=10, family='monospace',
+            verticalalignment='center', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
+    
+    plt.suptitle('Mathematical Convergence Analysis', fontsize=14, fontweight='bold', y=0.995)
     plt.tight_layout()
-    plt.savefig('training_history.png', dpi=150, bbox_inches='tight')
-    print("Training history saved to training_history.png")
+    history_path = os.path.join(RESULTS_DIR, 'training_history.png')
+    plt.savefig(history_path, dpi=150, bbox_inches='tight')
+    print(f"Training history with mathematical analysis saved to {history_path}")
     plt.close()
 
 
@@ -908,6 +1072,10 @@ def main():
     print(f"   Epochs: {EPOCHS}")
     print("      - One epoch = one pass through all training data")
     
+    # Create results directory
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    print(f"\nResults will be saved to: {RESULTS_DIR}/")
+    
     # Load data
     train_loader, test_dataset = get_data_loaders(BATCH_SIZE)
     
@@ -930,19 +1098,21 @@ def main():
     
     # Plot training history
     print("\nPlotting training history...")
-    plot_training_history(history)
+    plot_training_history(history, epochs=EPOCHS)
     
     # Save training history
-    with open('training_history.json', 'w') as f:
+    history_json_path = os.path.join(RESULTS_DIR, 'training_history.json')
+    with open(history_json_path, 'w') as f:
         json.dump(history, f, indent=2)
-    print("Training history saved to training_history.json")
+    print(f"Training history saved to {history_json_path}")
     
     # ==========================================================================
     # COMPREHENSIVE FINAL EVALUATION
     # ==========================================================================
     # Load best model for final evaluation
     print("\nLoading best model for final evaluation...")
-    checkpoint = torch.load('best_cnn_model.pth', weights_only=True)
+    model_path = os.path.join(RESULTS_DIR, 'best_cnn_model.pth')
+    checkpoint = torch.load(model_path, weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"   Loaded model from epoch {checkpoint['epoch'] + 1} "
           f"(Test Acc: {checkpoint['test_acc']:.2f}%)")
@@ -962,14 +1132,15 @@ def main():
         'confusion_matrix': evaluation_results['confusion_matrix'].tolist()
     }
     
-    with open('evaluation_results.json', 'w') as f:
+    eval_results_path = os.path.join(RESULTS_DIR, 'evaluation_results.json')
+    with open(eval_results_path, 'w') as f:
         json.dump(eval_summary, f, indent=2)
-    print("\nEvaluation results saved to evaluation_results.json")
+    print(f"\nEvaluation results saved to {eval_results_path}")
     
     print("\n" + "=" * 70)
     print("TRAINING PIPELINE COMPLETE!")
     print("=" * 70)
-    print(f"\nGenerated files:")
+    print(f"\nGenerated files (saved to {RESULTS_DIR}/):")
     print(f"   • best_cnn_model.pth           - Trained model weights")
     print(f"   • training_history.png         - Loss/accuracy plots")
     print(f"   • training_history.json        - Training metrics data")

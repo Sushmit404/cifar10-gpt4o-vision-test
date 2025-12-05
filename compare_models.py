@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 import time
 
 # Import CNN model
-from train_cnn import CustomCNN
+from train_cnn import CustomCNN, RESULTS_DIR
 
 # Load environment variables
 load_dotenv()
@@ -73,14 +73,19 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     print(f"Stratified subset created with {len(stratified_indices)} samples")
     
     # Save indices for reproducibility
-    with open('stratified_test_indices.json', 'w') as f:
+    indices_file = os.path.join(RESULTS_DIR, 'stratified_test_indices.json')
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    with open(indices_file, 'w') as f:
         json.dump(stratified_indices, f)
-    print("Indices saved to stratified_test_indices.json")
+    print(f"Indices saved to {indices_file}")
     
     return stratified_indices
 
 
-def load_trained_cnn(model_path='best_cnn_model.pth'):
+def load_trained_cnn(model_path=None):
+    """Load trained CNN model from results directory"""
+    if model_path is None:
+        model_path = os.path.join(RESULTS_DIR, 'best_cnn_model.pth')
     """Load the trained CNN model"""
     print(f"\nLoading trained CNN from {model_path}...")
     
@@ -571,21 +576,23 @@ def main():
     test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=test_transform)
     
     # Create stratified test subset
-    if os.path.exists('stratified_test_indices.json'):
+    indices_file = os.path.join(RESULTS_DIR, 'stratified_test_indices.json')
+    if os.path.exists(indices_file):
         print("\nLoading existing stratified test indices...")
-        with open('stratified_test_indices.json', 'r') as f:
+        with open(indices_file, 'r') as f:
             indices = json.load(f)
         print(f"Loaded {len(indices)} indices")
     else:
         indices = create_stratified_test_subset(test_dataset, num_samples=2000)
     
     # Load trained CNN
-    if not os.path.exists('best_cnn_model.pth'):
-        print("\nError: best_cnn_model.pth not found!")
+    model_path = os.path.join(RESULTS_DIR, 'best_cnn_model.pth')
+    if not os.path.exists(model_path):
+        print(f"\nError: {model_path} not found!")
         print("Please run train_cnn.py first to train the model.")
         return
     
-    cnn_model = load_trained_cnn('best_cnn_model.pth')
+    cnn_model = load_trained_cnn(model_path)
     
     # Evaluate CNN
     cnn_preds, true_labels = evaluate_cnn(cnn_model, test_dataset, indices)
