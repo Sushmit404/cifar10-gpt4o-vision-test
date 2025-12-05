@@ -20,7 +20,7 @@ CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
 
 def download_cifar10_test():
     """Download CIFAR-10 test dataset"""
-    print("📦 Downloading CIFAR-10 test dataset...")
+    print("Downloading CIFAR-10 test dataset...")
     transform = transforms.Compose([transforms.ToTensor()])
     
     test_data = datasets.CIFAR10(
@@ -30,7 +30,7 @@ def download_cifar10_test():
         transform=transform
     )
     
-    print(f"✅ Test dataset size: {len(test_data)}")
+    print(f"Test dataset size: {len(test_data)}")
     return test_data
 
 
@@ -46,7 +46,7 @@ def create_stratified_subset(test_data, images_per_class=200, seed=42):
     Returns:
         dict with 'indices', 'class_distribution', and 'total_images'
     """
-    print(f"\n🎲 Creating stratified subset with seed={seed}")
+    print(f"\nCreating stratified subset with seed={seed}")
     print(f"Target: {images_per_class} images per class")
     
     # Set random seed for reproducibility
@@ -55,13 +55,13 @@ def create_stratified_subset(test_data, images_per_class=200, seed=42):
     # Group images by class
     class_indices = defaultdict(list)
     
-    print("📊 Organizing images by class...")
+    print("Organizing images by class...")
     for idx in range(len(test_data)):
         _, label = test_data[idx]
         class_indices[label].append(idx)
     
     # Display class distribution in original dataset
-    print("\n📈 Original test set distribution:")
+    print("\nOriginal test set distribution:")
     for class_id, indices in sorted(class_indices.items()):
         print(f"  Class {class_id} ({CLASSES[class_id]:>10}): {len(indices):>4} images")
     
@@ -69,13 +69,13 @@ def create_stratified_subset(test_data, images_per_class=200, seed=42):
     stratified_indices = []
     class_distribution = {}
     
-    print(f"\n🔀 Sampling {images_per_class} images from each class...")
+    print(f"\nSampling {images_per_class} images from each class...")
     for class_id in range(10):
         available_indices = class_indices[class_id]
         
         # Check if we have enough images
         if len(available_indices) < images_per_class:
-            print(f"⚠️  Warning: Class {class_id} has only {len(available_indices)} images!")
+            print(f"Warning: Class {class_id} has only {len(available_indices)} images!")
             sampled = available_indices
         else:
             # Randomly sample without replacement
@@ -101,7 +101,7 @@ def create_stratified_subset(test_data, images_per_class=200, seed=42):
         'classes': CLASSES
     }
     
-    print(f"\n✅ Stratified subset created!")
+    print(f"\nStratified subset created!")
     print(f"Total images: {len(stratified_indices)}")
     
     return result
@@ -115,7 +115,7 @@ def verify_subset(test_data, subset_info):
         test_data: CIFAR-10 test dataset
         subset_info: Dictionary returned by create_stratified_subset
     """
-    print("\n🔍 Verifying subset balance...")
+    print("\nVerifying subset balance...")
     
     indices = subset_info['indices']
     class_counts = defaultdict(int)
@@ -126,20 +126,20 @@ def verify_subset(test_data, subset_info):
         class_counts[label] += 1
     
     # Display verification results
-    print("\n📊 Actual subset distribution:")
+    print("\nActual subset distribution:")
     all_balanced = True
     for class_id in range(10):
         count = class_counts[class_id]
         expected = subset_info['images_per_class']
-        status = "✅" if count == expected else "❌"
+        status = "[OK]" if count == expected else "[FAIL]"
         print(f"  {status} Class {class_id} ({CLASSES[class_id]:>10}): {count:>3} images (expected {expected})")
         if count != expected:
             all_balanced = False
     
     if all_balanced:
-        print("\n✅ Perfect balance achieved!")
+        print("\nPerfect balance achieved!")
     else:
-        print("\n⚠️  Warning: Imbalanced distribution detected!")
+        print("\nWarning: Imbalanced distribution detected!")
     
     return all_balanced
 
@@ -152,13 +152,13 @@ def save_subset_info(subset_info, filename='stratified_subset_2000.json'):
         subset_info: Dictionary with subset information
         filename: Output filename (default: stratified_subset_2000.json)
     """
-    print(f"\n💾 Saving subset info to {filename}...")
+    print(f"\nSaving subset info to {filename}...")
     
     with open(filename, 'w') as f:
         json.dump(subset_info, f, indent=2)
     
-    print(f"✅ Saved {len(subset_info['indices'])} indices")
-    print(f"📄 File: {filename}")
+    print(f"Saved {len(subset_info['indices'])} indices")
+    print(f"File: {filename}")
 
 
 def visualize_distribution(subset_info, filename='subset_distribution.png'):
@@ -169,7 +169,7 @@ def visualize_distribution(subset_info, filename='subset_distribution.png'):
         subset_info: Dictionary with subset information
         filename: Output filename for the plot
     """
-    print(f"\n📊 Creating distribution visualization...")
+    print(f"\nCreating distribution visualization...")
     
     classes = subset_info['classes']
     distribution = subset_info['class_distribution']
@@ -200,7 +200,7 @@ def visualize_distribution(subset_info, filename='subset_distribution.png'):
     
     plt.tight_layout()
     plt.savefig(filename, dpi=150, bbox_inches='tight')
-    print(f"✅ Visualization saved to {filename}")
+    print(f"Visualization saved to {filename}")
 
 
 def main():
@@ -231,19 +231,18 @@ def main():
     
     # Summary
     print("\n" + "=" * 60)
-    print("📊 SUMMARY")
+    print("SUMMARY")
     print("=" * 60)
     print(f"Total images selected: {subset_info['total_images']}")
     print(f"Images per class: {subset_info['images_per_class']}")
     print(f"Random seed: {subset_info['seed']}")
-    print(f"Balanced: {'Yes ✅' if is_balanced else 'No ❌'}")
+    print(f"Balanced: {'Yes' if is_balanced else 'No'}")
     print(f"Output files:")
     print(f"  - stratified_subset_2000.json (indices)")
     print(f"  - subset_distribution.png (visualization)")
-    print("\n✅ Ready for GPT-4o evaluation!")
+    print("\nReady for GPT-4o evaluation!")
     print("=" * 60)
 
 
 if __name__ == "__main__":
     main()
-

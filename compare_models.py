@@ -48,7 +48,7 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     np.random.seed(seed)
     samples_per_class = num_samples // 10
     
-    print(f"📊 Creating stratified test subset...")
+    print(f"Creating stratified test subset...")
     print(f"   Total samples: {num_samples}")
     print(f"   Samples per class: {samples_per_class}")
     
@@ -70,33 +70,33 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     # Shuffle the combined indices
     np.random.shuffle(stratified_indices)
     
-    print(f"✅ Stratified subset created with {len(stratified_indices)} samples")
+    print(f"Stratified subset created with {len(stratified_indices)} samples")
     
     # Save indices for reproducibility
     with open('stratified_test_indices.json', 'w') as f:
         json.dump(stratified_indices, f)
-    print("💾 Indices saved to stratified_test_indices.json")
+    print("Indices saved to stratified_test_indices.json")
     
     return stratified_indices
 
 
 def load_trained_cnn(model_path='best_cnn_model.pth'):
     """Load the trained CNN model"""
-    print(f"\n🏗️  Loading trained CNN from {model_path}...")
+    print(f"\nLoading trained CNN from {model_path}...")
     
     model = CustomCNN(num_classes=10).to(device)
     checkpoint = torch.load(model_path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     
-    print(f"✅ Model loaded (Test Acc from training: {checkpoint['test_acc']:.2f}%)")
+    print(f"Model loaded (Test Acc from training: {checkpoint['test_acc']:.2f}%)")
     
     return model
 
 
 def evaluate_cnn(model, test_dataset, indices):
     """Evaluate CNN on test subset"""
-    print("\n🔍 Evaluating CNN on test subset...")
+    print("\nEvaluating CNN on test subset...")
     
     model.eval()
     predictions = []
@@ -126,7 +126,7 @@ def evaluate_cnn(model, test_dataset, indices):
     true_labels = np.array(true_labels)
     
     accuracy = (predictions == true_labels).mean() * 100
-    print(f"✅ CNN Accuracy: {accuracy:.2f}%")
+    print(f"CNN Accuracy: {accuracy:.2f}%")
     
     return predictions, true_labels
 
@@ -187,13 +187,13 @@ def classify_with_gpt4o(image_pil, api_key):
 
 def evaluate_gpt4o(test_dataset, indices, api_key, save_progress=True):
     """Evaluate GPT-4o Vision on test subset"""
-    print("\n🔍 Evaluating GPT-4o Vision on test subset...")
-    print("⚠️  This will make 2000 API calls and may take ~30-60 minutes")
-    print("⚠️  Estimated cost: ~$10-20 (depending on pricing)")
+    print("\nEvaluating GPT-4o Vision on test subset...")
+    print("WARNING: This will make 2000 API calls and may take ~30-60 minutes")
+    print("Estimated cost: ~$10-20 (depending on pricing)")
     
     response = input("\nProceed with GPT-4o evaluation? (yes/no): ")
     if response.lower() != 'yes':
-        print("❌ GPT-4o evaluation skipped.")
+        print("GPT-4o evaluation skipped.")
         return None, None
     
     predictions = []
@@ -203,7 +203,7 @@ def evaluate_gpt4o(test_dataset, indices, api_key, save_progress=True):
     # Load progress if exists
     progress_file = 'gpt4o_progress.json'
     if os.path.exists(progress_file) and save_progress:
-        print(f"📂 Found existing progress file: {progress_file}")
+        print(f"Found existing progress file: {progress_file}")
         with open(progress_file, 'r') as f:
             progress = json.load(f)
             predictions = progress['predictions']
@@ -227,7 +227,7 @@ def evaluate_gpt4o(test_dataset, indices, api_key, save_progress=True):
                 pred_idx = CLASSES.index(pred_name)
             else:
                 # Handle unexpected responses
-                print(f"\n⚠️  Unexpected response: '{pred_name}' for index {idx}")
+                print(f"\nUnexpected response: '{pred_name}' for index {idx}")
                 pred_idx = -1  # Mark as error
                 failed_indices.append(idx)
             
@@ -247,7 +247,7 @@ def evaluate_gpt4o(test_dataset, indices, api_key, save_progress=True):
             time.sleep(0.1)
             
         except Exception as e:
-            print(f"\n❌ Error at index {idx}: {str(e)}")
+            print(f"\nError at index {idx}: {str(e)}")
             predictions.append(-1)  # Mark as error
             true_labels.append(label)
             failed_indices.append(idx)
@@ -271,10 +271,10 @@ def evaluate_gpt4o(test_dataset, indices, api_key, save_progress=True):
     valid_labels = true_labels[valid_mask]
     
     accuracy = (valid_predictions == valid_labels).mean() * 100
-    print(f"\n✅ GPT-4o Accuracy: {accuracy:.2f}% ({valid_mask.sum()}/{len(predictions)} valid predictions)")
+    print(f"\nGPT-4o Accuracy: {accuracy:.2f}% ({valid_mask.sum()}/{len(predictions)} valid predictions)")
     
     if failed_indices:
-        print(f"⚠️  Failed predictions: {len(failed_indices)}")
+        print(f"Failed predictions: {len(failed_indices)}")
     
     return predictions, true_labels
 
@@ -294,7 +294,7 @@ def plot_confusion_matrix(y_true, y_pred, title, filename):
     plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(filename, dpi=150, bbox_inches='tight')
-    print(f"📊 Saved: {filename}")
+    print(f"Saved: {filename}")
     plt.close()
 
 
@@ -340,13 +340,13 @@ def plot_comparison_bar_chart(cnn_acc, gpt4o_acc, cnn_class_acc, gpt4o_class_acc
     
     plt.tight_layout()
     plt.savefig('accuracy_comparison.png', dpi=150, bbox_inches='tight')
-    print("📊 Saved: accuracy_comparison.png")
+    print("Saved: accuracy_comparison.png")
     plt.close()
 
 
 def visualize_feature_maps(model, test_dataset, indices, num_samples=3):
     """Visualize CNN feature maps for sample images"""
-    print("\n🎨 Visualizing CNN feature maps...")
+    print("\nVisualizing CNN feature maps...")
     
     model.eval()
     normalize = transforms.Normalize(
@@ -388,13 +388,13 @@ def visualize_feature_maps(model, test_dataset, indices, num_samples=3):
     plt.suptitle('CNN Feature Maps Visualization', fontsize=14, fontweight='bold', y=0.995)
     plt.tight_layout()
     plt.savefig('cnn_feature_maps.png', dpi=150, bbox_inches='tight')
-    print("📊 Saved: cnn_feature_maps.png")
+    print("Saved: cnn_feature_maps.png")
     plt.close()
 
 
 def visualize_failure_cases(test_dataset, indices, cnn_preds, gpt4o_preds, true_labels, num_samples=10):
     """Visualize failure cases for both models"""
-    print("\n🎨 Visualizing failure cases...")
+    print("\nVisualizing failure cases...")
     
     # Find cases where models disagree or both fail
     cnn_wrong = cnn_preds != true_labels
@@ -448,13 +448,13 @@ def visualize_failure_cases(test_dataset, indices, cnn_preds, gpt4o_preds, true_
         axes[1, i].imshow(img_np)
         axes[1, i].set_title(
             f'True: {CLASSES[true_labels[idx_in_subset]]}\n'
-            f'CNN: ✓ {CLASSES[cnn_preds[idx_in_subset]]}\n'
-            f'GPT: ✗ {CLASSES[gpt4o_preds[idx_in_subset]]}',
+            f'CNN: [OK] {CLASSES[cnn_preds[idx_in_subset]]}\n'
+            f'GPT: [X] {CLASSES[gpt4o_preds[idx_in_subset]]}',
             fontsize=8
         )
         axes[1, i].axis('off')
     
-    axes[1, 0].set_ylabel('CNN ✓ GPT ✗', fontsize=10, fontweight='bold')
+    axes[1, 0].set_ylabel('CNN OK, GPT Wrong', fontsize=10, fontweight='bold')
     
     # Plot GPT-4o right, CNN wrong
     for i in range(min(5, len(gpt_right_cnn_wrong))):
@@ -470,18 +470,18 @@ def visualize_failure_cases(test_dataset, indices, cnn_preds, gpt4o_preds, true_
         axes[2, i].imshow(img_np)
         axes[2, i].set_title(
             f'True: {CLASSES[true_labels[idx_in_subset]]}\n'
-            f'CNN: ✗ {CLASSES[cnn_preds[idx_in_subset]]}\n'
-            f'GPT: ✓ {CLASSES[gpt4o_preds[idx_in_subset]]}',
+            f'CNN: [X] {CLASSES[cnn_preds[idx_in_subset]]}\n'
+            f'GPT: [OK] {CLASSES[gpt4o_preds[idx_in_subset]]}',
             fontsize=8
         )
         axes[2, i].axis('off')
     
-    axes[2, 0].set_ylabel('CNN ✗ GPT ✓', fontsize=10, fontweight='bold')
+    axes[2, 0].set_ylabel('CNN Wrong, GPT OK', fontsize=10, fontweight='bold')
     
     plt.suptitle('Interesting Failure Cases', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig('failure_cases.png', dpi=150, bbox_inches='tight')
-    print("📊 Saved: failure_cases.png")
+    print("Saved: failure_cases.png")
     plt.close()
 
 
@@ -498,13 +498,13 @@ def generate_report(cnn_preds, gpt4o_preds, true_labels):
     valid_mask = gpt4o_preds != -1
     gpt4o_acc = (gpt4o_preds[valid_mask] == true_labels[valid_mask]).mean() * 100
     
-    print(f"\n📊 OVERALL ACCURACY")
+    print(f"\nOVERALL ACCURACY")
     print(f"   CNN (Trained):        {cnn_acc:.2f}%")
     print(f"   GPT-4o (Zero-Shot):   {gpt4o_acc:.2f}%")
     print(f"   Difference:           {cnn_acc - gpt4o_acc:+.2f}%")
     
     # Per-class metrics
-    print(f"\n📊 PER-CLASS METRICS")
+    print(f"\nPER-CLASS METRICS")
     print("-"*80)
     print(f"{'Class':<12} {'CNN Acc':<10} {'GPT Acc':<10} {'CNN P/R/F1':<25} {'GPT P/R/F1':<25}")
     print("-"*80)
@@ -531,11 +531,11 @@ def generate_report(cnn_preds, gpt4o_preds, true_labels):
         print(f"{class_name:<12} {cnn_class_accuracy:>6.2f}%    {gpt_class_accuracy:>6.2f}%")
     
     # Classification reports
-    print(f"\n📊 CNN CLASSIFICATION REPORT")
+    print(f"\nCNN CLASSIFICATION REPORT")
     print("-"*80)
     print(classification_report(true_labels, cnn_preds, target_names=CLASSES, digits=4))
     
-    print(f"\n📊 GPT-4o CLASSIFICATION REPORT")
+    print(f"\nGPT-4o CLASSIFICATION REPORT")
     print("-"*80)
     print(classification_report(true_labels[valid_mask], gpt4o_preds[valid_mask], 
                                 target_names=CLASSES, digits=4))
@@ -555,7 +555,7 @@ def generate_report(cnn_preds, gpt4o_preds, true_labels):
         f.write(classification_report(true_labels[valid_mask], gpt4o_preds[valid_mask], 
                                       target_names=CLASSES, digits=4))
     
-    print("💾 Report saved to comparison_report.txt")
+    print("Report saved to comparison_report.txt")
     
     return cnn_acc, gpt4o_acc, cnn_class_acc, gpt4o_class_acc
 
@@ -572,16 +572,16 @@ def main():
     
     # Create stratified test subset
     if os.path.exists('stratified_test_indices.json'):
-        print("\n📂 Loading existing stratified test indices...")
+        print("\nLoading existing stratified test indices...")
         with open('stratified_test_indices.json', 'r') as f:
             indices = json.load(f)
-        print(f"✅ Loaded {len(indices)} indices")
+        print(f"Loaded {len(indices)} indices")
     else:
         indices = create_stratified_test_subset(test_dataset, num_samples=2000)
     
     # Load trained CNN
     if not os.path.exists('best_cnn_model.pth'):
-        print("\n❌ Error: best_cnn_model.pth not found!")
+        print("\nError: best_cnn_model.pth not found!")
         print("Please run train_cnn.py first to train the model.")
         return
     
@@ -593,7 +593,7 @@ def main():
     # Evaluate GPT-4o
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("\n⚠️  WARNING: OPENAI_API_KEY not found in environment")
+        print("\nWARNING: OPENAI_API_KEY not found in environment")
         print("GPT-4o evaluation will be skipped.")
         print("To include GPT-4o evaluation, create a .env file with:")
         print("OPENAI_API_KEY=your_key_here")
@@ -633,19 +633,18 @@ def main():
     visualize_feature_maps(cnn_model, test_dataset, indices, num_samples=3)
     
     print("\n" + "="*80)
-    print("✅ COMPARISON COMPLETE!")
+    print("COMPARISON COMPLETE!")
     print("="*80)
     print("\nGenerated files:")
-    print("  📊 cnn_confusion_matrix.png")
+    print("  - cnn_confusion_matrix.png")
     if gpt4o_preds is not None:
-        print("  📊 gpt4o_confusion_matrix.png")
-        print("  📊 accuracy_comparison.png")
-        print("  📊 failure_cases.png")
-    print("  📊 cnn_feature_maps.png")
-    print("  📄 comparison_report.txt")
-    print("\n🎉 All done!")
+        print("  - gpt4o_confusion_matrix.png")
+        print("  - accuracy_comparison.png")
+        print("  - failure_cases.png")
+    print("  - cnn_feature_maps.png")
+    print("  - comparison_report.txt")
+    print("\nAll done!")
 
 
 if __name__ == "__main__":
     main()
-

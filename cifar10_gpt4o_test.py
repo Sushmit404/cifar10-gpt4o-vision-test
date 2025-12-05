@@ -29,7 +29,7 @@ CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
 
 def download_cifar10():
     """Download CIFAR-10 test dataset"""
-    print("📦 Downloading CIFAR-10 dataset...")
+    print("Downloading CIFAR-10 dataset...")
     transform = transforms.Compose([transforms.ToTensor()])
     
     test_data = datasets.CIFAR10(
@@ -56,7 +56,7 @@ def select_sample_images(test_data, indices=None):
         images.append(img)
         labels.append(CLASSES[label])
     
-    print(f"🖼️  Selected {len(indices)} images")
+    print(f"Selected {len(indices)} images")
     print(f"Ground-truth labels: {labels}")
     
     return images, labels, indices
@@ -72,7 +72,7 @@ def tensor_to_png_bytes(tensor):
     Returns:
         PNG image as bytes
     """
-    # Convert tensor → uint8 array (H, W, C)
+    # Convert tensor -> uint8 array (H, W, C)
     arr = (tensor.numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
     img = Image.fromarray(arr)
     
@@ -144,13 +144,13 @@ def visualize_results(images, true_labels, predictions, indices):
     
     plt.tight_layout()
     plt.savefig('cifar10_gpt4o_results.png', dpi=150, bbox_inches='tight')
-    print("📊 Results saved to cifar10_gpt4o_results.png")
+    print("Results saved to cifar10_gpt4o_results.png")
     plt.show()
 
 
 def main():
     """Main pipeline"""
-    print("🚀 Starting CIFAR-10 + GPT-4o Vision Pipeline\n")
+    print("Starting CIFAR-10 + GPT-4o Vision Pipeline\n")
     
     # Step 1: Download CIFAR-10
     test_data = download_cifar10()
@@ -165,7 +165,7 @@ def main():
     # Step 3: Get API key
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("❌ ERROR: OPENAI_API_KEY not found!")
+        print("ERROR: OPENAI_API_KEY not found!")
         print("Please create a .env file with your API key:")
         print("OPENAI_API_KEY=your_key_here")
         return
@@ -174,7 +174,7 @@ def main():
     print()
     
     # Step 4: Test with GPT-4o Vision
-    print("🔍 Testing images with GPT-4o Vision...\n")
+    print("Testing images with GPT-4o Vision...\n")
     predictions = []
     
     for i, (img, true_label) in enumerate(zip(images, true_labels)):
@@ -212,11 +212,11 @@ def main():
             prediction = response.choices[0].message.content.strip().lower()
             predictions.append(prediction)
             
-            match = "✅" if prediction == true_label else "❌"
+            match = "[OK]" if prediction == true_label else "[WRONG]"
             print(f"{match} True: {true_label} | Predicted: {prediction}")
             
         except Exception as e:
-            print(f"❌ Error: {str(e)}")
+            print(f"Error: {str(e)}")
             predictions.append("error")
     
     print()
@@ -224,17 +224,15 @@ def main():
     # Step 5: Calculate accuracy
     correct = sum(1 for t, p in zip(true_labels, predictions) if t == p)
     accuracy = (correct / len(true_labels)) * 100
-    print(f"📈 Accuracy: {correct}/{len(true_labels)} ({accuracy:.1f}%)")
+    print(f"Accuracy: {correct}/{len(true_labels)} ({accuracy:.1f}%)")
     print()
     
     # Step 6: Visualize results
-    print("🎨 Creating visualization...")
+    print("Creating visualization...")
     visualize_results(images, true_labels, predictions, indices)
     
-    print("\n🎉 Pipeline complete!")
+    print("\nPipeline complete!")
 
 
 if __name__ == "__main__":
     main()
-
-
