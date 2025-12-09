@@ -288,7 +288,7 @@ RESULTS_DIR = 'results_cnn'
 
 def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     """
-    Create a stratified subset of test data (200 images per class)
+    Load stratified subset of test data from stratified_subset_2000.json
     
     This ensures fair comparison between CNN and GPT-4o by using
     the exact same test images for both models.
@@ -301,14 +301,21 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     Returns:
         List of indices for the stratified subset
     """
-    # Ensure results directory exists
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    indices_file = os.path.join(RESULTS_DIR, 'stratified_test_indices.json')
+    # Use the shared stratified_subset_2000.json from root directory
+    indices_file = 'stratified_subset_2000.json'
     
     if os.path.exists(indices_file):
         print(f"Loading stratified test indices from {indices_file}")
         with open(indices_file, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+            # Handle both formats: plain list or dict with "indices" key
+            if isinstance(data, dict) and 'indices' in data:
+                return data['indices']
+            return data
+    
+    # Fallback: create new indices if file doesn't exist
+    print(f"Warning: {indices_file} not found, creating new stratified subset...")
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     
     np.random.seed(seed)
     samples_per_class = num_samples // 10
@@ -328,8 +335,6 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     np.random.shuffle(stratified_indices)
     stratified_indices = [int(i) for i in stratified_indices]
     
-    with open(indices_file, 'w') as f:
-        json.dump(stratified_indices, f)
     print(f"Created stratified subset: {num_samples} images ({samples_per_class} per class)")
     
     return stratified_indices
