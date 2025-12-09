@@ -2,7 +2,6 @@
 """
 Run CNN Training on CIFAR-10 (Standalone)
 This script runs only the CNN training without any GPT-4o API calls.
-No API key required, no cost.
 """
 
 import subprocess
