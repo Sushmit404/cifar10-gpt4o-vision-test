@@ -3,6 +3,12 @@ CIFAR-10 Custom CNN Training Script
 
 Trains a CNN on CIFAR-10 and evaluates on a fixed stratified subset of 2,000
 test images (200 per class) for fair comparison with GPT-4o Vision.
+
+Features:
+- Single training run with configurable epochs
+- Epoch sweep mode: test multiple epoch values to find optimal
+- Early stopping to prevent overfitting
+- Comprehensive visualizations and metrics
 """
 
 import torch
@@ -16,12 +22,13 @@ from tqdm import tqdm
 import json
 import os
 import time
+import argparse
 from scipy.optimize import curve_fit
+import copy
+from datetime import datetime
 
 
-# =============================================================================
-# MANUAL IMPLEMENTATIONS (Demonstrating Mathematical Understanding)
-# =============================================================================
+# Manual implementations for demonstrating mathematical understanding
 
 def manual_softmax(logits):
     """
@@ -283,8 +290,7 @@ class CustomCNN(nn.Module):
 CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
            'dog', 'frog', 'horse', 'ship', 'truck']
 
-# Results directory for all output files
-RESULTS_DIR = 'results_cnn'
+RESULTS_DIR = None
 
 
 def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
@@ -313,10 +319,6 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
             if isinstance(data, dict) and 'indices' in data:
                 return data['indices']
             return data
-    
-    # Fallback: create new indices if file doesn't exist
-    print(f"Warning: {indices_file} not found, creating new stratified subset...")
-    os.makedirs(RESULTS_DIR, exist_ok=True)
     
     np.random.seed(seed)
     samples_per_class = num_samples // 10
@@ -501,7 +503,7 @@ def final_evaluation(model, test_dataset, indices, device):
     cm_no_diag = cm.copy()
     np.fill_diagonal(cm_no_diag, 0)
     most_confused = np.unravel_index(np.argmax(cm_no_diag), cm.shape)
-    print(f"\nMost confused: {CLASSES[most_confused[0]]} → {CLASSES[most_confused[1]]} "
+    print(f"\nMost confused: {CLASSES[most_confused[0]]} -> {CLASSES[most_confused[1]]} "
           f"({cm_no_diag[most_confused]} errors)")
     
     plot_confusion_matrix(cm, CLASSES)
@@ -544,21 +546,51 @@ def plot_confusion_matrix(cm, class_names, save_path=None):
     plt.close()
 
 
-def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0.001):
-    """Train with evaluation on stratified test subset"""
+def train_model(model, train_loader, test_dataset, test_indices, epochs=100, lr=0.001, 
+                early_stopping=False, patience=5, flatline_patience=20, verbose=True):
+    """
+    Train with evaluation on stratified test subset
+    
+    Args:
+        model: The CNN model to train
+        train_loader: DataLoader for training data
+        test_dataset: Test dataset
+        test_indices: Indices for stratified test subset
+        epochs: Maximum number of epochs to train (increased default to detect overfitting)
+        lr: Learning rate
+        early_stopping: Whether to enable early stopping
+        patience: Number of epochs without improvement before stopping
+        flatline_patience: Number of epochs with no accuracy change before stopping (default: 20)
+        verbose: Whether to print progress
+    
+    Returns:
+        history: Dictionary with training metrics
+    """
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
     
     history = {'train_loss': [], 'train_acc': [], 'test_loss': [], 'test_acc': [], 'epoch_times': []}
     best_acc = 0.0
+    best_model_state = None
+    epochs_without_improvement = 0
+    epochs_without_change = 0
+    last_test_acc = None
+    actual_epochs = 0
+    stopped_reason = None
     
-    print(f"\nTraining for {epochs} epochs...")
+    if verbose:
+        print(f"\nTraining for up to {epochs} epochs...")
+        if early_stopping:
+            print(f"Early stopping enabled (patience={patience})")
+        print(f"Flatline detection enabled (stops if accuracy unchanged for {flatline_patience} epochs)")
+    
     training_start_time = time.time()
     
     for epoch in range(epochs):
         epoch_start_time = time.time()
-        print(f"\nEpoch {epoch+1}/{epochs}")
+        if verbose:
+            print(f"\nEpoch {epoch+1}/{epochs}")
         
         train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
         test_loss, test_acc = evaluate(model, test_dataset, test_indices, criterion, device)
@@ -570,11 +602,25 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0
         history['test_loss'].append(test_loss)
         history['test_acc'].append(test_acc)
         history['epoch_times'].append(epoch_time)
+        actual_epochs = epoch + 1
         
-        print(f"Train: {train_acc:.2f}% | Test: {test_acc:.2f}% | Time: {epoch_time:.1f}s")
+        if verbose:
+            print(f"Train: {train_acc:.2f}% | Test: {test_acc:.2f}% | Time: {epoch_time:.1f}s")
         
+        # Check for flatline (no change in accuracy)
+        if last_test_acc is not None:
+            # Consider unchanged if difference is less than 0.01% (essentially flat)
+            if abs(test_acc - last_test_acc) < 0.01:
+                epochs_without_change += 1
+            else:
+                epochs_without_change = 0
+        last_test_acc = test_acc
+        
+        # Check for improvement
         if test_acc > best_acc:
             best_acc = test_acc
+            epochs_without_improvement = 0
+            best_model_state = copy.deepcopy(model.state_dict())
             model_path = os.path.join(RESULTS_DIR, 'best_cnn_model.pth')
             torch.save({
                 'epoch': epoch,
@@ -583,14 +629,271 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0
                 'test_acc': test_acc,
                 'test_subset_size': len(test_indices),
             }, model_path)
-            print(f"Best model saved! (Test Acc: {test_acc:.2f}%)")
+            if verbose:
+                print(f"  Best model saved! (Test Acc: {test_acc:.2f}%)")
+        else:
+            epochs_without_improvement += 1
+        
+        # Check early stopping conditions
+        if early_stopping and epochs_without_improvement >= patience:
+            stopped_reason = f"No improvement for {patience} epochs"
+            if verbose:
+                print(f"\nEarly stopping triggered. {stopped_reason}.")
+                print(f"  Stopped at epoch {epoch+1}, best accuracy was {best_acc:.2f}%")
+            break
+        
+        # Check flatline condition (always enabled, not just when early_stopping is True)
+        if epochs_without_change >= flatline_patience:
+            stopped_reason = f"Accuracy flatlined for {flatline_patience} epochs"
+            if verbose:
+                print(f"\nFlatline detection triggered. {stopped_reason}.")
+                print(f"  Stopped at epoch {epoch+1}, accuracy: {test_acc:.2f}%")
+            break
     
     total_training_time = time.time() - training_start_time
     history['total_training_time'] = total_training_time
+    history['actual_epochs'] = actual_epochs
+    history['best_acc'] = best_acc
+    history['early_stopped'] = stopped_reason is not None
+    history['stopped_reason'] = stopped_reason
     
-    print(f"\nBest accuracy: {best_acc:.2f}%")
-    print(f"Total training time: {total_training_time:.1f}s ({total_training_time/60:.1f} min)")
+    # Restore best model state
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+    
+    if verbose:
+        print(f"\nBest accuracy: {best_acc:.2f}%")
+        print(f"Total training time: {total_training_time:.1f}s ({total_training_time/60:.1f} min)")
+        if history['early_stopped']:
+            print(f"Training stopped early at epoch {actual_epochs}: {stopped_reason}")
+    
     return history
+
+
+def run_epoch_sweep(train_loader, test_dataset, test_indices, epoch_list, lr=0.001, 
+                   early_stopping=False, patience=5, flatline_patience=20):
+    """
+    Run training with different epoch values to find optimal training length.
+    
+    This is useful for:
+    1. Finding the point of diminishing returns
+    2. Detecting when overfitting begins
+    3. Optimizing training time vs accuracy trade-off
+    
+    Args:
+        train_loader: DataLoader for training data
+        test_dataset: Test dataset
+        test_indices: Indices for stratified test subset
+        epoch_list: List of epoch values to test (e.g., [5, 10, 20, 30, 50])
+        lr: Learning rate
+        early_stopping: Whether to enable early stopping
+        patience: Early stopping patience
+        flatline_patience: Number of epochs with no accuracy change before stopping
+    
+    Returns:
+        sweep_results: Dictionary with results for each epoch value
+    """
+    print("\n" + "=" * 70)
+    print("EPOCH SWEEP EXPERIMENT")
+    print("=" * 70)
+    print(f"Testing epoch values: {epoch_list}")
+    print(f"Training {len(epoch_list)} separate models to compare accuracy")
+    print("=" * 70)
+    
+    sweep_results = {
+        'epoch_values': epoch_list,
+        'accuracies': [],
+        'training_times': [],
+        'best_epochs': [],
+        'histories': [],
+    }
+    
+    for i, epochs in enumerate(epoch_list):
+        print(f"\n{'─' * 70}")
+        print(f"[{i+1}/{len(epoch_list)}] Training with {epochs} epochs...")
+        print('─' * 70)
+        
+        # Create fresh model for each experiment
+        model = CustomCNN().to(device)
+        
+        history = train_model(
+            model, train_loader, test_dataset, test_indices,
+            epochs=epochs, lr=lr, early_stopping=early_stopping, 
+            patience=patience, flatline_patience=flatline_patience, verbose=True
+        )
+        
+        sweep_results['accuracies'].append(history['best_acc'])
+        sweep_results['training_times'].append(history['total_training_time'])
+        sweep_results['best_epochs'].append(history['test_acc'].index(max(history['test_acc'])) + 1)
+        sweep_results['histories'].append({
+            'train_acc': history['train_acc'],
+            'test_acc': history['test_acc'],
+            'train_loss': history['train_loss'],
+            'test_loss': history['test_loss'],
+        })
+    
+    # Find optimal epoch count
+    best_idx = np.argmax(sweep_results['accuracies'])
+    sweep_results['optimal_epochs'] = epoch_list[best_idx]
+    sweep_results['optimal_accuracy'] = sweep_results['accuracies'][best_idx]
+    
+    # Calculate efficiency (accuracy per training minute)
+    sweep_results['efficiency'] = [
+        acc / (time_s / 60) if time_s > 0 else 0 
+        for acc, time_s in zip(sweep_results['accuracies'], sweep_results['training_times'])
+    ]
+    
+    print("\n" + "=" * 70)
+    print("EPOCH SWEEP RESULTS SUMMARY")
+    print("=" * 70)
+    print(f"{'Epochs':<10} {'Accuracy':>12} {'Time (min)':>12} {'Eff (%/min)':>12}")
+    print("-" * 50)
+    for i, epochs in enumerate(epoch_list):
+        marker = " *" if i == best_idx else ""
+        print(f"{epochs:<10} {sweep_results['accuracies'][i]:>11.2f}% "
+              f"{sweep_results['training_times'][i]/60:>11.1f} "
+              f"{sweep_results['efficiency'][i]:>11.2f}{marker}")
+    print("-" * 50)
+    print(f"\nOPTIMAL: {sweep_results['optimal_epochs']} epochs -> {sweep_results['optimal_accuracy']:.2f}% accuracy")
+    
+    # Plot epoch sweep comparison
+    plot_epoch_sweep_comparison(sweep_results)
+    
+    # Save sweep results
+    sweep_results_path = os.path.join(RESULTS_DIR, 'epoch_sweep_results.json')
+    # Convert numpy types for JSON serialization
+    serializable_results = {
+        'epoch_values': [int(e) for e in sweep_results['epoch_values']],
+        'accuracies': [float(a) for a in sweep_results['accuracies']],
+        'training_times': [float(t) for t in sweep_results['training_times']],
+        'best_epochs': [int(e) for e in sweep_results['best_epochs']],
+        'optimal_epochs': int(sweep_results['optimal_epochs']),
+        'optimal_accuracy': float(sweep_results['optimal_accuracy']),
+        'efficiency': [float(e) for e in sweep_results['efficiency']],
+    }
+    with open(sweep_results_path, 'w') as f:
+        json.dump(serializable_results, f, indent=2)
+    print(f"\nSweep results saved to {sweep_results_path}")
+    
+    return sweep_results
+
+
+def plot_epoch_sweep_comparison(sweep_results):
+    """
+    Create visualization comparing different epoch training runs.
+    
+    This helps identify:
+    1. Optimal epoch count for best accuracy
+    2. Diminishing returns point
+    3. Time vs accuracy trade-off
+    """
+    fig = plt.figure(figsize=(16, 12))
+    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+    
+    epochs = sweep_results['epoch_values']
+    accuracies = sweep_results['accuracies']
+    times = [t/60 for t in sweep_results['training_times']]  # Convert to minutes
+    best_idx = np.argmax(accuracies)
+    
+    # Color scheme
+    colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(epochs)))
+    
+    # Plot 1: Accuracy vs Epochs
+    ax1 = fig.add_subplot(gs[0, 0])
+    bars = ax1.bar(range(len(epochs)), accuracies, color=colors, edgecolor='black', linewidth=1.5)
+    bars[best_idx].set_color('#FFD700')  # Gold for best
+    bars[best_idx].set_edgecolor('#B8860B')
+    bars[best_idx].set_linewidth(3)
+    
+    ax1.set_xticks(range(len(epochs)))
+    ax1.set_xticklabels([str(e) for e in epochs])
+    ax1.set_xlabel('Number of Epochs', fontsize=12)
+    ax1.set_ylabel('Test Accuracy (%)', fontsize=12)
+    ax1.set_title('Accuracy vs Training Epochs', fontsize=14, fontweight='bold')
+    
+    # Add value labels on bars
+    for i, (bar, acc) in enumerate(zip(bars, accuracies)):
+        label = f'{acc:.1f}%'
+        if i == best_idx:
+            label += '\n(best)'
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                label, ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    ax1.set_ylim([min(accuracies) - 5, max(accuracies) + 8])
+    ax1.grid(axis='y', alpha=0.3)
+    
+    # Plot 2: Training Time vs Epochs
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.bar(range(len(epochs)), times, color=colors, edgecolor='black', linewidth=1.5)
+    ax2.set_xticks(range(len(epochs)))
+    ax2.set_xticklabels([str(e) for e in epochs])
+    ax2.set_xlabel('Number of Epochs', fontsize=12)
+    ax2.set_ylabel('Training Time (minutes)', fontsize=12)
+    ax2.set_title('Training Time vs Epochs', fontsize=14, fontweight='bold')
+    
+    for i, (t, e) in enumerate(zip(times, epochs)):
+        ax2.text(i, t + 0.2, f'{t:.1f}m', ha='center', va='bottom', fontsize=10)
+    
+    ax2.grid(axis='y', alpha=0.3)
+    
+    # Plot 3: Accuracy progression line plot
+    ax3 = fig.add_subplot(gs[1, 0])
+    ax3.plot(epochs, accuracies, 'o-', color='#2E86AB', linewidth=2.5, markersize=10)
+    ax3.scatter([epochs[best_idx]], [accuracies[best_idx]], color='#FFD700', s=200, 
+                zorder=5, edgecolor='black', linewidth=2, label=f'Best: {epochs[best_idx]} epochs')
+    
+    # Add trend line
+    if len(epochs) >= 3:
+        z = np.polyfit(epochs, accuracies, 2)
+        p = np.poly1d(z)
+        x_smooth = np.linspace(min(epochs), max(epochs), 100)
+        ax3.plot(x_smooth, p(x_smooth), '--', color='red', alpha=0.5, label='Trend (quadratic fit)')
+    
+    ax3.set_xlabel('Number of Epochs', fontsize=12)
+    ax3.set_ylabel('Test Accuracy (%)', fontsize=12)
+    ax3.set_title('Accuracy Progression', fontsize=14, fontweight='bold')
+    ax3.legend(loc='lower right')
+    ax3.grid(True, alpha=0.3)
+    
+    # Plot 4: Training efficiency (accuracy per minute)
+    ax4 = fig.add_subplot(gs[1, 1])
+    efficiency = sweep_results['efficiency']
+    bars = ax4.bar(range(len(epochs)), efficiency, color=colors, edgecolor='black', linewidth=1.5)
+    
+    best_eff_idx = np.argmax(efficiency)
+    bars[best_eff_idx].set_color('#90EE90')  # Light green for most efficient
+    bars[best_eff_idx].set_edgecolor('#228B22')
+    bars[best_eff_idx].set_linewidth(3)
+    
+    ax4.set_xticks(range(len(epochs)))
+    ax4.set_xticklabels([str(e) for e in epochs])
+    ax4.set_xlabel('Number of Epochs', fontsize=12)
+    ax4.set_ylabel('Efficiency (% accuracy / minute)', fontsize=12)
+    ax4.set_title('Training Efficiency', fontsize=14, fontweight='bold')
+    
+    for i, (bar, eff) in enumerate(zip(bars, efficiency)):
+        label = f'{eff:.1f}'
+        if i == best_eff_idx:
+            label += '\n(best)'
+        ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
+                label, ha='center', va='bottom', fontsize=10)
+    
+    ax4.grid(axis='y', alpha=0.3)
+    
+    # Add summary text box
+    summary = (f"Best Accuracy: {max(accuracies):.2f}% @ {epochs[best_idx]} epochs\n"
+               f"Best Efficiency: {max(efficiency):.2f} %/min @ {epochs[best_eff_idx]} epochs\n"
+               f"Recommendation: Use {epochs[best_idx]} epochs for best results")
+    
+    fig.text(0.5, 0.02, summary, ha='center', fontsize=11, 
+             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    
+    plt.suptitle('Epoch Sweep Experiment Results', fontsize=16, fontweight='bold', y=0.98)
+    
+    sweep_plot_path = os.path.join(RESULTS_DIR, 'epoch_sweep_comparison.png')
+    plt.savefig(sweep_plot_path, dpi=150, bbox_inches='tight')
+    print(f"\nEpoch sweep comparison saved to {sweep_plot_path}")
+    plt.close()
 
 
 def plot_training_history(history, epochs=20):
@@ -609,9 +912,7 @@ def plot_training_history(history, epochs=20):
     
     epochs_list = list(range(1, len(history['train_loss']) + 1))
     
-    # =====================================================================
-    # 1. Loss Curves (with exponential fit)
-    # =====================================================================
+    # Plot 1: Loss curves with exponential fit
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.plot(epochs_list, history['train_loss'], label='Train Loss', marker='o', linewidth=2)
     ax1.plot(epochs_list, history['test_loss'], label='Test Loss', marker='s', linewidth=2)
@@ -641,17 +942,20 @@ def plot_training_history(history, epochs=20):
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
-    # =====================================================================
-    # 2. Accuracy Curves
-    # =====================================================================
+    # Plot 2: Accuracy curves
     ax2 = fig.add_subplot(gs[0, 1])
     ax2.plot(epochs_list, history['train_acc'], label='Train Acc', marker='o', linewidth=2)
     ax2.plot(epochs_list, history['test_acc'], label='Test Acc', marker='s', linewidth=2)
     
-    # Add GPT-4o target range (85-95%)
-    ax2.axhspan(85, 95, alpha=0.2, color='green', label='GPT-4o Range (85-95%)')
-    ax2.axhline(85, color='green', linestyle='--', alpha=0.5, linewidth=1)
-    ax2.axhline(95, color='green', linestyle='--', alpha=0.5, linewidth=1)
+    # Add GPT-4o result line (96.8%)
+    GPT4O_ACCURACY = 96.8
+    ax2.axhline(GPT4O_ACCURACY, color='red', linestyle='-', linewidth=2.5, 
+                label=f'GPT-4o Vision ({GPT4O_ACCURACY}%)', alpha=0.8)
+    
+    # Add GPT-4o target range (85-95%) as background
+    ax2.axhspan(85, 95, alpha=0.15, color='green', label='GPT-4o Range (85-95%)')
+    ax2.axhline(85, color='green', linestyle='--', alpha=0.3, linewidth=1)
+    ax2.axhline(95, color='green', linestyle='--', alpha=0.3, linewidth=1)
     
     # Final accuracy annotation
     final_acc = history['test_acc'][-1]
@@ -661,16 +965,22 @@ def plot_training_history(history, epochs=20):
                 bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7),
                 arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
     
+    # Add gap to GPT-4o annotation
+    gap_to_gpt4o = GPT4O_ACCURACY - final_acc
+    if gap_to_gpt4o > 0:
+        ax2.annotate(f'Gap to GPT-4o: {gap_to_gpt4o:.2f}%', 
+                    xy=(len(history['test_acc']) * 0.7, GPT4O_ACCURACY - 2),
+                    bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.7),
+                    fontsize=9)
+    
     ax2.set_xlabel('Epoch', fontsize=11)
     ax2.set_ylabel('Accuracy (%)', fontsize=11)
-    ax2.set_title('Accuracy Convergence', fontsize=12, fontweight='bold')
+    ax2.set_title('Accuracy Convergence (vs GPT-4o)', fontsize=12, fontweight='bold')
     ax2.set_ylim([0, 100])
-    ax2.legend()
+    ax2.legend(loc='lower right', fontsize=9)
     ax2.grid(True, alpha=0.3)
     
-    # =====================================================================
-    # 3. Convergence Rate: |acc(t) - acc(t-1)|
-    # =====================================================================
+    # Plot 3: Convergence rate
     ax3 = fig.add_subplot(gs[1, 0])
     if len(history['test_acc']) > 1:
         convergence_rate = np.abs(np.diff(history['test_acc']))
@@ -683,9 +993,7 @@ def plot_training_history(history, epochs=20):
         ax3.grid(True, alpha=0.3)
         ax3.set_yscale('log')
     
-    # =====================================================================
-    # 4. Overfitting Gap: train_acc - test_acc
-    # =====================================================================
+    # Plot 4: Overfitting gap (train_acc - test_acc)
     ax4 = fig.add_subplot(gs[1, 1])
     overfitting_gap = np.array(history['train_acc']) - np.array(history['test_acc'])
     ax4.plot(epochs_list, overfitting_gap, marker='o', color='orange', linewidth=2)
@@ -696,9 +1004,7 @@ def plot_training_history(history, epochs=20):
     ax4.set_title('Generalization Gap (Overfitting Indicator)', fontsize=12, fontweight='bold')
     ax4.grid(True, alpha=0.3)
     
-    # =====================================================================
-    # 5. Learning Rate Schedule
-    # =====================================================================
+    # Plot 5: Learning rate schedule
     ax5 = fig.add_subplot(gs[2, 0])
     # Calculate LR schedule: lr * (gamma ^ floor(epoch / step_size))
     initial_lr = 0.001
@@ -713,11 +1019,12 @@ def plot_training_history(history, epochs=20):
     ax5.set_yscale('log')
     ax5.grid(True, alpha=0.3)
     
-    # =====================================================================
-    # 6. Mathematical Summary Statistics
-    # =====================================================================
+    # Plot 6: Summary statistics
     ax6 = fig.add_subplot(gs[2, 1])
     ax6.axis('off')
+    
+    # GPT-4o accuracy for comparison
+    GPT4O_ACCURACY = 96.8
     
     # Calculate statistics
     final_train_loss = history['train_loss'][-1]
@@ -756,12 +1063,12 @@ Generalization:
   Gap:       {overfitting_gap[-1]:.2f}%
   
 Convergence Status:
-  {'✓ Converged' if len(history['test_acc']) > 5 and recent_improvement < 0.5 else '→ Still improving'}
+  {'Converged' if len(history['test_acc']) > 5 and recent_improvement < 0.5 else 'Still improving'}
   
 Target Comparison:
   Current: {final_test_acc:.2f}%
-  GPT-4o:  85-95%
-  Gap:     {85 - final_test_acc:.2f}% to reach GPT-4o range
+  GPT-4o:  {GPT4O_ACCURACY}%
+  Gap:     {GPT4O_ACCURACY - final_test_acc:.2f}% to reach GPT-4o
     """
     
     ax6.text(0.1, 0.5, summary_text, fontsize=10, family='monospace',
@@ -775,25 +1082,63 @@ Target Comparison:
     plt.close()
 
 
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='Train CNN on CIFAR-10')
+    parser.add_argument('--epochs', type=str, default='100',
+                        help='Number of epochs (single value or comma-separated for sweep, default: 100)')
+    parser.add_argument('--sweep', action='store_true',
+                        help='Enable epoch sweep mode')
+    parser.add_argument('--early-stopping', action='store_true',
+                        help='Enable early stopping')
+    parser.add_argument('--patience', type=int, default=5,
+                        help='Early stopping patience (default: 5)')
+    parser.add_argument('--flatline-patience', type=int, default=20,
+                        help='Flatline detection patience - stops if accuracy unchanged (default: 20)')
+    parser.add_argument('--batch-size', type=int, default=128,
+                        help='Batch size (default: 128)')
+    parser.add_argument('--lr', type=float, default=0.001,
+                        help='Learning rate (default: 0.001)')
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     pipeline_start_time = time.time()
     
-    BATCH_SIZE = 128
-    EPOCHS = 20
-    LEARNING_RATE = 0.001
+    BATCH_SIZE = args.batch_size
+    LEARNING_RATE = args.lr
+    EARLY_STOPPING = args.early_stopping
+    PATIENCE = args.patience
     NUM_TEST_SAMPLES = 2000  # Stratified subset for fair comparison with GPT-4o
+    
+    # Parse epochs
+    if args.sweep:
+        EPOCH_LIST = [int(e.strip()) for e in args.epochs.split(',')]
+        print(f"\nEPOCH SWEEP MODE")
+        print(f"   Testing epochs: {EPOCH_LIST}")
+    else:
+        EPOCHS = int(args.epochs.split(',')[0])
     
     print("\nHYPERPARAMETERS (with mathematical justification):")
     print(f"   Batch Size: {BATCH_SIZE}")
-    print("      - Larger batches → more stable gradient estimates")
+    print("      - Larger batches -> more stable gradient estimates")
     print("      - Trade-off between memory usage and gradient variance")
     print(f"   Learning Rate: {LEARNING_RATE}")
     print("      - Controls step size: θ = θ - lr * ∇L")
-    print("      - Too high → divergence, too low → slow convergence")
-    print(f"   Epochs: {EPOCHS}")
+    print("      - Too high -> divergence, too low -> slow convergence")
+    if args.sweep:
+        print(f"   Epoch Values: {EPOCH_LIST}")
+    else:
+        print(f"   Epochs: {EPOCHS}")
     print("      - One epoch = one pass through all training data")
+    if EARLY_STOPPING:
+        print(f"   Early Stopping: ENABLED (patience={PATIENCE})")
     
-    # Create results directory
+    global RESULTS_DIR
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    RESULTS_DIR = f'results_cnn_32_{timestamp}'
+    
     os.makedirs(RESULTS_DIR, exist_ok=True)
     print(f"\nResults will be saved to: {RESULTS_DIR}/")
     
@@ -801,11 +1146,40 @@ def main():
     train_loader, test_dataset = get_data_loaders(BATCH_SIZE)
     test_indices = create_stratified_test_subset(test_dataset)
     
+    # Epoch sweep mode: train multiple models with different epoch counts
+    if args.sweep:
+        sweep_results = run_epoch_sweep(
+            train_loader, test_dataset, test_indices,
+            epoch_list=EPOCH_LIST, lr=LEARNING_RATE,
+            early_stopping=EARLY_STOPPING, patience=PATIENCE,
+            flatline_patience=args.flatline_patience
+        )
+        
+        total_pipeline_time = time.time() - pipeline_start_time
+        print("\n" + "=" * 70)
+        print("EPOCH SWEEP COMPLETE!")
+        print("=" * 70)
+        print(f"\nOPTIMAL CONFIGURATION:")
+        print(f"   Epochs: {sweep_results['optimal_epochs']}")
+        print(f"   Accuracy: {sweep_results['optimal_accuracy']:.2f}%")
+        print(f"\nGenerated files (saved to {RESULTS_DIR}/):")
+        print(f"   • epoch_sweep_comparison.png  - Visual comparison of all runs")
+        print(f"   • epoch_sweep_results.json    - Detailed sweep results")
+        print(f"   • best_cnn_model.pth          - Best model weights")
+        print(f"\nTotal time: {total_pipeline_time:.1f}s ({total_pipeline_time/60:.1f} min)")
+        return
+    
+    # Single training mode
     model = CustomCNN().to(device)
     params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {params:,}")
     
-    history = train_model(model, train_loader, test_dataset, test_indices, epochs=EPOCHS, lr=LEARNING_RATE)
+    history = train_model(
+        model, train_loader, test_dataset, test_indices, 
+        epochs=EPOCHS, lr=LEARNING_RATE,
+        early_stopping=EARLY_STOPPING, patience=PATIENCE,
+        flatline_patience=args.flatline_patience
+    )
     
     # Plot training history
     print("\nPlotting training history...")
@@ -817,10 +1191,19 @@ def main():
         json.dump(history, f, indent=2)
     print(f"Training history saved to {history_json_path}")
     
-    # ==========================================================================
-    # COMPREHENSIVE FINAL EVALUATION
-    # ==========================================================================
-    # Load best model for final evaluation
+    # Save timing data to separate CSV file (easy to analyze)
+    timing_csv_path = os.path.join(RESULTS_DIR, 'epoch_timing.csv')
+    with open(timing_csv_path, 'w') as f:
+        f.write("epoch,train_loss,train_acc,test_loss,test_acc,epoch_time_sec,cumulative_time_sec\n")
+        cumulative = 0
+        for i in range(len(history['epoch_times'])):
+            cumulative += history['epoch_times'][i]
+            f.write(f"{i+1},{history['train_loss'][i]:.6f},{history['train_acc'][i]:.2f},"
+                    f"{history['test_loss'][i]:.6f},{history['test_acc'][i]:.2f},"
+                    f"{history['epoch_times'][i]:.2f},{cumulative:.2f}\n")
+    print(f"Epoch timing saved to {timing_csv_path}")
+    
+    # Final evaluation with best model
     print("\nLoading best model for final evaluation...")
     model_path = os.path.join(RESULTS_DIR, 'best_cnn_model.pth')
     checkpoint = torch.load(model_path, weights_only=True)
@@ -838,6 +1221,8 @@ def main():
     eval_summary = {
         'accuracy': results['metrics']['accuracy'],
         'macro_f1': results['metrics']['macro_avg']['f1'],
+        'epochs': history.get('actual_epochs', EPOCHS),
+        'early_stopped': history.get('early_stopped', False),
         'timing': {
             'total_training_time_seconds': history.get('total_training_time', 0),
             'total_training_time_minutes': history.get('total_training_time', 0) / 60,
@@ -860,6 +1245,7 @@ def main():
     print(f"   • best_cnn_model.pth           - Trained model weights")
     print(f"   • training_history.png         - Loss/accuracy plots")
     print(f"   • training_history.json        - Training metrics data")
+    print(f"   • epoch_timing.csv             - Per-epoch timing data")
     print(f"   • confusion_matrix.png         - Confusion matrix visualization")
     print(f"   • evaluation_results.json      - Final evaluation metrics")
     print(f"\nEvaluation used {NUM_TEST_SAMPLES} stratified test images (same as GPT-4o)")
@@ -870,6 +1256,8 @@ def main():
     print(f"   • Avg epoch time:     {np.mean(history.get('epoch_times', [0])):.1f}s")
     print(f"   • Final evaluation:   {eval_time:.1f}s")
     print(f"   • Total pipeline:     {total_pipeline_time:.1f}s ({total_pipeline_time/60:.1f} min)")
+    if history.get('early_stopped'):
+        print(f"   • Early stopping:     Triggered at epoch {history.get('actual_epochs')}")
     print("-" * 70)
 
 
