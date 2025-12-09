@@ -1,0 +1,14 @@
+{
+  "accuracy": 0.7155,
+  "macro_f1": 0.7125088133720794,
+  "epochs": 100,
+  "early_stopped": false,
+  "timing": {
+    "total_training_time_seconds": 1567.1470079421997,
+    "total_training_time_minutes": 26.11911679903666,
+    "avg_epoch_time_seconds": 15.669744358062744,
+    "final_evaluation_time_seconds": 1.6668105125427246,
+    "total_pipeline_time_seconds": 1570.6792707443237,
+    "total_pipeline_time_minutes": 26.17798784573873
+  }
+}
