@@ -15,6 +15,7 @@ import numpy as np
 from tqdm import tqdm
 import json
 import os
+import time
 from scipy.optimize import curve_fit
 
 
@@ -549,24 +550,28 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0
     optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
     
-    history = {'train_loss': [], 'train_acc': [], 'test_loss': [], 'test_acc': []}
+    history = {'train_loss': [], 'train_acc': [], 'test_loss': [], 'test_acc': [], 'epoch_times': []}
     best_acc = 0.0
     
     print(f"\nTraining for {epochs} epochs...")
+    training_start_time = time.time()
     
     for epoch in range(epochs):
+        epoch_start_time = time.time()
         print(f"\nEpoch {epoch+1}/{epochs}")
         
         train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
         test_loss, test_acc = evaluate(model, test_dataset, test_indices, criterion, device)
         scheduler.step()
         
+        epoch_time = time.time() - epoch_start_time
         history['train_loss'].append(train_loss)
         history['train_acc'].append(train_acc)
         history['test_loss'].append(test_loss)
         history['test_acc'].append(test_acc)
+        history['epoch_times'].append(epoch_time)
         
-        print(f"Train: {train_acc:.2f}% | Test: {test_acc:.2f}%")
+        print(f"Train: {train_acc:.2f}% | Test: {test_acc:.2f}% | Time: {epoch_time:.1f}s")
         
         if test_acc > best_acc:
             best_acc = test_acc
@@ -580,7 +585,11 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=20, lr=0
             }, model_path)
             print(f"Best model saved! (Test Acc: {test_acc:.2f}%)")
     
+    total_training_time = time.time() - training_start_time
+    history['total_training_time'] = total_training_time
+    
     print(f"\nBest accuracy: {best_acc:.2f}%")
+    print(f"Total training time: {total_training_time:.1f}s ({total_training_time/60:.1f} min)")
     return history
 
 
@@ -767,6 +776,8 @@ Target Comparison:
 
 
 def main():
+    pipeline_start_time = time.time()
+    
     BATCH_SIZE = 128
     EPOCHS = 20
     LEARNING_RATE = 0.001
@@ -816,7 +827,26 @@ def main():
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"\nLoaded best model (epoch {checkpoint['epoch'] + 1}, {checkpoint['test_acc']:.2f}%)")
     
+    eval_start_time = time.time()
     results = final_evaluation(model, test_dataset, test_indices, device)
+    eval_time = time.time() - eval_start_time
+    
+    # Calculate total pipeline time
+    total_pipeline_time = time.time() - pipeline_start_time
+    
+    # Create evaluation summary with timing info
+    eval_summary = {
+        'accuracy': results['metrics']['accuracy'],
+        'macro_f1': results['metrics']['macro_avg']['f1'],
+        'timing': {
+            'total_training_time_seconds': history.get('total_training_time', 0),
+            'total_training_time_minutes': history.get('total_training_time', 0) / 60,
+            'avg_epoch_time_seconds': np.mean(history.get('epoch_times', [0])),
+            'final_evaluation_time_seconds': eval_time,
+            'total_pipeline_time_seconds': total_pipeline_time,
+            'total_pipeline_time_minutes': total_pipeline_time / 60,
+        }
+    }
     
     eval_results_path = os.path.join(RESULTS_DIR, 'evaluation_results.json')
     with open(eval_results_path, 'w') as f:
@@ -832,8 +862,15 @@ def main():
     print(f"   • training_history.json        - Training metrics data")
     print(f"   • confusion_matrix.png         - Confusion matrix visualization")
     print(f"   • evaluation_results.json      - Final evaluation metrics")
-    print(f"   • stratified_test_indices.json - Fixed 2,000 test image indices")
     print(f"\nEvaluation used {NUM_TEST_SAMPLES} stratified test images (same as GPT-4o)")
+    
+    print(f"\n" + "-" * 70)
+    print("TIMING SUMMARY:")
+    print(f"   • Training time:      {history.get('total_training_time', 0):.1f}s ({history.get('total_training_time', 0)/60:.1f} min)")
+    print(f"   • Avg epoch time:     {np.mean(history.get('epoch_times', [0])):.1f}s")
+    print(f"   • Final evaluation:   {eval_time:.1f}s")
+    print(f"   • Total pipeline:     {total_pipeline_time:.1f}s ({total_pipeline_time/60:.1f} min)")
+    print("-" * 70)
 
 
 if __name__ == "__main__":
