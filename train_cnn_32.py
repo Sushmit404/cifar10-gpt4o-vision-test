@@ -32,7 +32,7 @@ from datetime import datetime
 
 def manual_softmax(logits):
     """
-    Manual implementation of softmax function.
+    Manual implementation of softmax function. 
     
     Mathematical Definition:
         σ(z)_i = exp(z_i) / Σ_j exp(z_j)
