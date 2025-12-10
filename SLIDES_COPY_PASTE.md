@@ -53,17 +53,36 @@
 
 **Title:** Fair Comparison: Stratified Sampling
 
+**The Problem:**
+• CIFAR-10 test set = 10,000 images
+• Testing all with API = expensive & slow
+• Need smaller BUT representative subset
+
+**Our Solution - Stratified Random Sampling:**
+
+1. Group 10,000 images by class label (0-9)
+2. Randomly select 200 indices per class
+3. Use seed=42 for reproducibility
+4. Save indices to JSON file
+
 **Key Numbers:**
-• 2,000 test images (from 10,000)
-• Exactly 200 per class
-• Same images for BOTH models
+| Original | Subset | Per Class | Seed |
+|----------|--------|-----------|------|
+| 10,000 | 2,000 | 200 | 42 |
 
-**Why?**
-✅ Fair comparison
-✅ No class bias
-✅ Affordable (~$20 API cost)
+**Technical Detail (mention briefly):**
+```python
+np.random.choice(class_indices, size=200, replace=False)
+# Saved to: stratified_subset_2000.json
+```
 
-**Visual:** Pie chart showing equal class distribution
+**Why This Matters:**
+✅ Both models tested on IDENTICAL 2,000 images
+✅ Perfect class balance (no bias)
+✅ Reproducible (seed=42 → same indices)
+✅ Affordable (~$3 API cost, not $15)
+
+**Visual:** Bar chart showing 200 images per class
 
 ---
 
@@ -128,7 +147,7 @@ Fully Connected
 
 **Specs:**
 • 1.8 trillion parameters
-• Cost: ~$0.01 per image
+• Cost: ~$0.0008 per image (~$3 total!)
 • Zero training on CIFAR-10
 
 ---
@@ -156,10 +175,18 @@ Fully Connected
 
 **Title:** 💸 Fun Fact: The API Adventure
 
-**Numbers:**
-• 4,000 API calls total
-• ~$40 spent
-• 80 minutes of waiting
+**The Numbers:**
+| Stat | Value |
+|------|-------|
+| API calls | 4,000 |
+| Total tokens | 1,196,000 |
+| Total cost | **$3.04** ☕ |
+| Cost per image | $0.00076 |
+
+**Why So Cheap?**
+• Tiny 32×32 images = few tokens
+• Short responses ("cat", "dog")
+• GPT-4o: $2.50 per 1M tokens
 
 **Interesting Finding:**
 We tested BOTH:
@@ -167,6 +194,8 @@ We tested BOTH:
 • 32×32 raw → 96.75%
 
 "Upscaling had NO effect!"
+
+**Quote:** "4,000 API calls for $3... less than a coffee!"
 
 ---
 
@@ -280,7 +309,7 @@ Fully Connected → 10 classes
 | Accuracy | 71.55% | 92.10% | 96.75% |
 | Parameters | 1.2M | 2.3M | 1.8T |
 | Training | 26 min | 43 min | None |
-| Cost/image | Free | Free | $0.01 |
+| Cost/image | Free | Free | ~$0.0008 |
 
 **Gap Reduction:**
 • Before: 25%
@@ -455,7 +484,7 @@ Use these from your project:
 
 Drop these naturally during presentation:
 
-💬 "Fun fact: those 4,000 API calls cost about $40... but hey, it's for science!"
+💬 "Fun fact: those 4,000 API calls cost about $3... less than a coffee!"
 
 💬 "The GPU was NOT happy during those 43 minutes of training"
 

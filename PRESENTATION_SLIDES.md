@@ -62,18 +62,44 @@
 
 ## Stratified Sampling: Fair Comparison
 
-| Sampling Details | Value |
-|-----------------|-------|
-| Total test images | **2,000** |
-| Images per class | **200** (exactly) |
-| Selection method | Random stratified |
+### The Problem:
+- CIFAR-10 test set has **10,000 images** (1,000 per class)
+- Testing all 10K with GPT-4o API would be expensive
+- Need a **smaller but representative** subset
+
+### Our Solution: Stratified Random Sampling
+
+**Process:**
+1. Group all 10,000 test images by their class label (0-9)
+2. From each class, randomly select **200 indices** using `np.random.choice()`
+3. Use **seed=42** for reproducibility (anyone can recreate exact same subset)
+4. Store selected indices in `stratified_subset_2000.json`
+
+| Parameter | Value |
+|-----------|-------|
+| Original test set | 10,000 images |
+| Our subset | **2,000 images** |
+| Per class | **200 images** (exactly) |
+| Selection | Random without replacement |
 | Seed | 42 (reproducible) |
 
+### Technical Implementation:
+```python
+# For each class (0-9):
+indices = np.random.choice(
+    class_indices[class_id],  # All images of this class
+    size=200,                  # Select exactly 200
+    replace=False              # No duplicates
+)
+# Save to stratified_subset_2000.json
+```
+
 ## Why This Matters:
-- ✅ Both models tested on **identical** 2,000 images
-- ✅ Equal class representation (no bias)
-- ✅ Affordable API cost (~$20 vs $100 for full 10K)
-- ✅ Statistically significant sample size
+- ✅ Both CNN and GPT-4o tested on **identical** 2,000 images
+- ✅ Perfect class balance (no bias from unequal representation)
+- ✅ Reproducible: Same seed → same indices every time
+- ✅ Affordable API cost (~$3 for 2,000 vs ~$15 for full 10K)
+- ✅ Statistically significant (200 samples per class)
 
 *[Show subset_distribution.png visualization]*
 
@@ -156,7 +182,7 @@ CIFAR-10 Image (32×32)
 | Model | GPT-4o Vision |
 | Parameters | ~1.8 **trillion** |
 | Training on CIFAR-10 | **None** (zero-shot) |
-| Cost | ~$0.01 per image |
+| Cost | ~$0.0008 per image (~$3 total for 4,000 calls!) |
 
 ---
 
@@ -193,8 +219,15 @@ CIFAR-10 Image (32×32)
 | Stat | Value |
 |------|-------|
 | API calls made | **4,000** (2,000 × 2 experiments) |
-| Total cost | **~$40** |
+| Total tokens | **1,196,000** |
+| Total cost | **$3.04** ☕ (less than a coffee!) |
+| Cost per image | **$0.00076** (~0.08 cents) |
 | Time spent | ~80 minutes waiting |
+
+### Why So Cheap?
+- 32×32 images = very few tokens
+- Short responses (just "cat", "dog", etc.)
+- GPT-4o pricing: $2.50/1M input tokens
 
 ### Why 4,000 calls?
 
@@ -333,8 +366,8 @@ Input ──→ Conv → BatchNorm → ReLU → Conv → BatchNorm ──→ (+)
 | Parameters | 1.2M | 2.3M | 1.8T |
 | Training needed | Yes (50K images) | Yes (50K images) | **None** |
 | Inference time | <1ms | <1ms | ~1 sec |
-| Cost per image | Free | Free | $0.01 |
-| Total eval cost | Free | Free | ~$20 |
+| Cost per image | Free | Free | ~$0.0008 |
+| Total eval cost | Free | Free | ~$3 |
 
 ## The Gap:
 
@@ -525,10 +558,10 @@ truck          83.0%     95.0%    98.5%
 2. **Show the gap**: 71% vs 97% seems impossible
 3. **Build the story**: We improved step by step
 4. **Celebrate the win**: Closed gap by 80%!
-5. **Fun facts**: $40 in API costs, GPU going hot
+5. **Fun facts**: Only $3 for 4,000 API calls, GPU going hot
 
 ## Things to Mention Casually:
-- "Fun fact: those 4,000 API calls cost about $40... but hey, it's for science!"
+- "Fun fact: those 4,000 API calls cost about $3... less than a coffee!"
 - "The GPU was not happy during those 43 minutes of training"
 - "At 32×32 pixels, even WE couldn't tell cats from dogs sometimes"
 
