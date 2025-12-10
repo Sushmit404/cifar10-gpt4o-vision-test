@@ -261,283 +261,105 @@ We tested both:
 
 ---
 
-# 🔨 SLIDE 11: CNN Improvement Strategy
+# 🔨 SLIDE 11: How We Improved the CNN
 
-## How We Made Our CNN Stronger
+## From 71% → 92%: Our Strategy
 
-### 1. Architecture Improvements
-- **ResNet-style residual blocks** with skip connections
-- Increased channels: 32→64 **became** 64→128→256
-- 6 convolutional layers instead of 2
+| Category | Techniques Applied |
+|----------|-------------------|
+| **Architecture** | ResNet blocks, skip connections, 6 conv layers, channels 64→128→256 |
+| **Augmentation** | ColorJitter, RandomRotation(±10°), RandomErasing, RandomCrop |
+| **Training** | Label smoothing (0.1), CosineAnnealingLR, Early stopping |
 
-### 2. Data Augmentation
-- RandomHorizontalFlip, RandomCrop
-- **ColorJitter** (brightness, contrast)
-- **RandomRotation** (±10 degrees)
-- **RandomErasing** (patch dropout)
+### ResNet Architecture:
+```
+32×32 → Conv(64) → ResNet×2(64) → ResNet×2(128) → ResNet×2(256) → FC → 10 classes
+```
 
-### 3. Training Techniques
-- **Label Smoothing** (0.1) - prevents overconfidence
-- **CosineAnnealingLR** - smooth learning rate decay
-- **Early stopping** with patience=20
+**Key Insight:** Skip connections let gradients flow directly → enables deeper training
+
+**Training:** 43 min, 119 epochs, GPU was 🔥 HOT!
 
 ---
 
-# 🏗️ SLIDE 12: Improved CNN Architecture
+# 🎉 SLIDE 12: Results - The Improvement
 
-## ResNet-Style Architecture
-
-```
-Input: 32×32×3 (RGB)
-    ↓
-Initial Conv(3 → 64) + BatchNorm + ReLU
-    ↓
-Layer 1: 2× ResNet Blocks (64 channels) + MaxPool → 16×16
-    ↓
-Layer 2: 2× ResNet Blocks (128 channels) + Downsample → 8×8
-    ↓
-Layer 3: 2× ResNet Blocks (256 channels) + Downsample → 2×2
-    ↓
-Flatten(256×2×2=1024) → FC(256) → Dropout(0.5) → FC(10)
-    ↓
-Output: 10 class probabilities
-```
-
-### What's a Residual Block?
-
-```
-Input ──→ Conv → BatchNorm → ReLU → Conv → BatchNorm ──→ (+) → ReLU → Output
-   └──────────────────────────────────────────────────────↗
-                    (Skip Connection)
-```
-
-**Why it works:** Gradients flow directly through skip connections!
-
----
-
-# 🔥 SLIDE 13: Fun Fact - GPU Goes BRRR
-
-## Training the Improved CNN
-
-| Metric | Value |
-|--------|-------|
-| Training time | **43 minutes** |
-| Epochs run | 119 (early stopped) |
-| Temperature | 🔥 GPU was HOT! |
-
-### The Training Journey:
-- Epoch 1: ~45% accuracy (random guessing = 10%)
-- Epoch 50: ~85% accuracy
-- Epoch 99: **92.10%** accuracy (best!)
-- Epoch 119: Early stopped (no improvement for 20 epochs)
-
----
-
-# 🎉 SLIDE 14: Improved CNN Results
-
-## Accuracy: **92.10%** (up from 71.55%!)
-
-| Metric | Baseline | Improved | Change |
-|--------|----------|----------|--------|
-| Overall accuracy | 71.55% | **92.10%** | **+20.55%** ✅ |
-| Best class | 86.5% | **98.0%** | +11.5% |
-| Worst class | 42.5% | **84.0%** | +41.5% |
-
-## Per-Class Improvement:
+## Accuracy: 71.55% → **92.10%** (+20.55%!)
 
 | Class | Before | After | Δ |
 |-------|--------|-------|---|
 | 🐱 cat | 42.5% | 84.0% | **+41.5%** 🚀 |
-| 🐦 bird | 54.5% | 87.5% | **+33.0%** |
-| 🦌 deer | 60.0% | 93.0% | **+33.0%** |
-| 🚗 automobile | 86.5% | 98.0% | **+11.5%** |
+| 🐦 bird | 54.5% | 87.5% | +33.0% |
+| 🦌 deer | 60.0% | 93.0% | +33.0% |
+| 🚗 auto | 86.5% | 98.0% | +11.5% |
 
-*[Show improved CNN confusion matrix]*
+### Final Comparison:
 
----
+| Model | Accuracy | Parameters | Cost |
+|-------|----------|------------|------|
+| Baseline CNN | 71.55% | 1.2M | Free |
+| **Improved CNN** | **92.10%** | 2.3M | Free |
+| GPT-4o | 96.75% | 1.8T | ~$3 |
 
-# 📊 SLIDE 15: Final Comparison
-
-## CNN vs GPT-4o: The Showdown
-
-| Aspect | Baseline CNN | Improved CNN | GPT-4o Vision |
-|--------|-------------|--------------|---------------|
-| **Accuracy** | 71.55% | **92.10%** | **96.75%** |
-| Parameters | 1.2M | 2.3M | 1.8T |
-| Training needed | Yes (50K images) | Yes (50K images) | **None** |
-| Inference time | <1ms | <1ms | ~1 sec |
-| Cost per image | Free | Free | ~$0.0008 |
-| Total eval cost | Free | Free | ~$3 |
-
-## The Gap:
-
-| Comparison | Gap |
-|------------|-----|
-| Baseline → GPT-4o | 25.2% |
-| **Improved → GPT-4o** | **4.65%** |
-| Gap reduction | **~80%** 🎯 |
+**Gap closed: 25% → 5% (80% reduction!)** 🎯
 
 ---
 
-# 📈 SLIDE 16: Visual Comparison
-
-## Accuracy by Class
-
-*[Insert bar chart comparing all 3 models across 10 classes]*
-
-```
-Class         Baseline  Improved  GPT-4o
-─────────────────────────────────────────
-airplane       78.5%     95.5%    97.5%
-automobile     86.5%     98.0%    97.5%
-bird           54.5%     87.5%    95.0%
-cat            42.5%     84.0%    94.0%
-deer           60.0%     93.0%    96.5%
-dog            69.0%     86.0%    93.5%
-frog           80.5%     93.5%    93.5%
-horse          81.5%     93.0%    98.0%
-ship           79.5%     95.5%    99.0%
-truck          83.0%     95.0%    98.5%
-```
-
----
-
-# 🔍 SLIDE 17: Where Models Struggle
-
-## Common Confusion Patterns
-
-### Cat vs Dog (The Classic Problem!)
-
-| Model | Cat as Dog | Dog as Cat |
-|-------|------------|------------|
-| Baseline CNN | 56 errors | 33 errors |
-| Improved CNN | 12 errors | 16 errors |
-| GPT-4o | 5 errors | 6 errors |
-
-**Why?** At 32×32, cats and dogs look very similar!
-
-*[Show example confused images]*
-
-### Other Confusions:
-- 🐦 Bird ↔ ✈️ Airplane (both fly!)
-- 🚗 Automobile ↔ 🚛 Truck (similar shapes)
-- 🦌 Deer ↔ 🐴 Horse (four-legged animals)
-
----
-
-# 💡 SLIDE 18: Key Findings
+# 💡 SLIDE 13: Key Findings
 
 ## What We Learned
 
-### 1. **Zero-shot ≠ Unbeatable**
-- GPT-4o wins (96.75%) but only by ~5%
-- With proper techniques, CNNs can get close!
+| Finding | Insight |
+|---------|---------|
+| **Zero-shot ≠ Unbeatable** | GPT-4o wins by only ~5% with proper CNN techniques |
+| **Architecture Matters** | ResNet + skip connections: +5-8% accuracy |
+| **Augmentation is Crucial** | ColorJitter, RandomErasing: +3-5% accuracy |
+| **Upscaling = No Effect** | GPT-4o: 32×32 = 224×224 (both 96.75%) |
 
-### 2. **Architecture Matters**
-- ResNet blocks: +5-8% accuracy
-- Skip connections enable deeper training
-
-### 3. **Data Augmentation is Crucial**
-- ColorJitter, RandomErasing: +3-5%
-- Effectively multiplies training data
-
-### 4. **Upscaling Doesn't Help GPT-4o**
-- 32×32 and 224×224 → identical 96.75%
-- GPT-4o handles low-resolution well
-
-### 5. **Trade-offs Exist**
-- CNN: Free, fast, requires training
-- GPT-4o: Expensive, slow, zero-shot capable
+### Common Confusions (All Models):
+- 🐱 Cat ↔ 🐕 Dog (fur texture at 32×32)
+- 🐦 Bird ↔ ✈️ Airplane (flying objects)
+- 🚗 Auto ↔ 🚛 Truck (vehicle shapes)
 
 ---
 
-# 🚀 SLIDE 19: Conclusions
+# 🚀 SLIDE 14: Conclusions & Future Work
 
-## Summary
+## Main Takeaways
 
-| Achievement | Result |
-|-------------|--------|
-| Baseline CNN accuracy | 71.55% |
-| Improved CNN accuracy | **92.10%** (+21%) |
-| GPT-4o accuracy | 96.75% |
-| Gap closed | From 25% → **5%** |
+✅ **Custom CNNs CAN compete** with massive pre-trained models  
+✅ **Systematic improvements work** (+21% through techniques)  
+✅ **Trade-offs matter:** CNN = free & fast | GPT-4o = accurate & zero-shot  
+✅ **Zero-shot is powerful** but not unbeatable
 
-## Main Takeaways:
+## Future Work (If We Had 6 Months):
 
-1. ✅ **Custom CNNs CAN compete** with massive pre-trained models
-2. ✅ **Systematic improvements work** (+21% through techniques)
-3. ✅ **Trade-offs matter** (cost vs accuracy vs speed)
-4. ✅ **Zero-shot is powerful** but not unbeatable
-
----
-
-# 🔮 SLIDE 20: Future Work
-
-## What We'd Do With More Time
-
-### 1. Model Improvements
-- Try **Vision Transformers (ViT)** instead of CNN
-- Implement **attention mechanisms**
-- Test **transfer learning** from ImageNet
-
-### 2. More Experiments
-- Compare with **other LLMs** (Claude, Gemini)
-- Test on **harder datasets** (CIFAR-100, ImageNet)
-- Evaluate **robustness** to noise/blur
-
-### 3. Efficiency Analysis
-- Measure **energy consumption**
-- **Quantize** CNN for edge deployment
-- Build **real-time classifier**
-
-### 4. Interpretability
-- **Grad-CAM** visualizations for CNN
-- Analyze **what GPT-4o "sees"**
+| Area | Ideas |
+|------|-------|
+| **Models** | Vision Transformers (ViT), attention, transfer learning |
+| **Experiments** | Other LLMs (Claude, Gemini), CIFAR-100, ImageNet |
+| **Analysis** | Grad-CAM visualizations, energy consumption |
 
 ---
 
-# 📚 SLIDE 21: References
+# 📚 SLIDE 15: References & Thank You
 
-## Citations
-
-1. **CIFAR-10 Dataset**
-   - Krizhevsky, A. (2009). Learning Multiple Layers of Features from Tiny Images.
-   - https://www.cs.toronto.edu/~kriz/cifar.html
-
-2. **GPT-4o Vision**
-   - OpenAI (2024). GPT-4o Technical Report.
-   - https://platform.openai.com/docs/models/gpt-4o
-
-3. **ResNet Architecture**
-   - He, K., et al. (2016). Deep Residual Learning for Image Recognition.
-   - https://arxiv.org/abs/1512.03385
-
-4. **PyTorch Framework**
-   - https://pytorch.org/
-
-5. **Project Repository**
-   - https://github.com/Sushmit404/cifar10-gpt4o-vision-test
+## References:
+1. **CIFAR-10** - Krizhevsky (2009) - https://www.cs.toronto.edu/~kriz/cifar.html
+2. **GPT-4o** - OpenAI (2024) - https://platform.openai.com/docs/models/gpt-4o
+3. **ResNet** - He et al. (2016) - https://arxiv.org/abs/1512.03385
+4. **Our Code** - github.com/Sushmit404/cifar10-gpt4o-vision-test
 
 ---
 
-# ❓ SLIDE 22: Questions?
+## Thank You! Questions?
 
-## Thank You!
-
-### Project Links:
-- 📁 **GitHub**: github.com/Sushmit404/cifar10-gpt4o-vision-test
-- 📊 **Results**: See `results_cnn/` and `results_gpt4o_32x32/`
-- 📖 **Documentation**: See `info/` folder
-
-### Key Numbers to Remember:
 | Model | Accuracy |
 |-------|----------|
 | Baseline CNN | 71.55% |
-| Improved CNN | **92.10%** |
-| GPT-4o Vision | **96.75%** |
-| Gap Closed | **80%** |
-
-*Any questions?*
+| **Improved CNN** | **92.10%** |
+| **GPT-4o Vision** | **96.75%** |
+| **Gap Closed** | **80%** 🎯 |
 
 ---
 
@@ -550,8 +372,8 @@ truck          83.0%     95.0%    98.5%
 | 1-4 | Either | ~1.5 min |
 | 5-6 | Friend (CNN baseline) | ~1.5 min |
 | 7-9 | You (GPT-4o + fun facts) | ~1.5 min |
-| 10-14 | Either (improvements) | ~2 min |
-| 15-20 | Either (results + conclusions) | ~1.5 min |
+| 10-11 | Either (improvements) | ~1.5 min |
+| 12-15 | Either (results + conclusions) | ~2 min |
 
 ## Key Points to Emphasize:
 1. **Open with the hook**: Can a small model beat a giant?
