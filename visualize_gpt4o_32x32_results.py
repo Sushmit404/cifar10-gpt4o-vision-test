@@ -1,5 +1,5 @@
 """
-Generate visualizations from GPT-4o evaluation results.
+Generate visualizations from GPT-4o evaluation results (32x32 non-upscaled).
 Creates confusion matrix and per-class performance charts.
 """
 
@@ -13,10 +13,10 @@ CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
            'dog', 'frog', 'horse', 'ship', 'truck']
 
 def load_gpt4o_results():
-    """Load the most recent GPT-4o results file"""
-    results_files = glob.glob('results_gpt4o/gpt4o_results_*.json')
+    """Load the most recent GPT-4o 32x32 results file"""
+    results_files = glob.glob('results_gpt4o_32x32/gpt4o_32x32_results_*.json')
     if not results_files:
-        raise FileNotFoundError("No GPT-4o results found in results_gpt4o/")
+        raise FileNotFoundError("No GPT-4o 32x32 results found in results_gpt4o_32x32/")
     
     # Get most recent
     latest_file = max(results_files, key=os.path.getmtime)
@@ -41,7 +41,7 @@ def plot_confusion_matrix(cm, class_names, save_path):
            yticklabels=class_names,
            ylabel='True Label', 
            xlabel='Predicted Label', 
-           title='GPT-4o Confusion Matrix (224×224 Upscaled)')
+           title='GPT-4o Confusion Matrix (32×32 Non-Upscaled)')
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     
     thresh = cm_norm.max() / 2.
@@ -73,7 +73,7 @@ def plot_per_class_performance(results, save_path):
     
     ax.set_ylabel('Score (%)', fontsize=12)
     ax.set_xlabel('Class', fontsize=12)
-    ax.set_title('GPT-4o Per-Class Performance (224×224 Upscaled)', fontsize=14, fontweight='bold')
+    ax.set_title('GPT-4o Per-Class Performance (32×32 Non-Upscaled)', fontsize=14, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(CLASSES, rotation=45, ha='right')
     ax.legend(loc='lower right')
@@ -107,7 +107,7 @@ def plot_class_accuracy_comparison(results, save_path):
     
     ax.set_ylabel('Accuracy (%)', fontsize=12)
     ax.set_xlabel('Class', fontsize=12)
-    ax.set_title(f'GPT-4o Per-Class Accuracy (224×224 Upscaled) - Overall: {results["accuracy"]*100:.2f}%', 
+    ax.set_title(f'GPT-4o Per-Class Accuracy (32×32 Non-Upscaled) - Overall: {results["accuracy"]*100:.2f}%', 
                  fontsize=14, fontweight='bold')
     ax.set_ylim([90, 102])
     ax.axhline(y=results['accuracy'] * 100, color='blue', linestyle='--', 
@@ -200,7 +200,7 @@ def plot_summary_dashboard(results, save_path):
     
     summary = f"""
 GPT-4o CIFAR-10 EVALUATION SUMMARY
-224×224 Upscaled Images
+32×32 Non-Upscaled Images
 {'='*45}
 
 Overall Metrics:
@@ -229,7 +229,7 @@ Top Confusion Pairs:
             verticalalignment='top', transform=ax4.transAxes,
             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
     
-    plt.suptitle('GPT-4o Vision - CIFAR-10 Evaluation Results (224×224 Upscaled)', 
+    plt.suptitle('GPT-4o Vision - CIFAR-10 Evaluation Results (32×32 Non-Upscaled)', 
                  fontsize=16, fontweight='bold', y=0.98)
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {save_path}")
@@ -238,11 +238,11 @@ Top Confusion Pairs:
 
 def main():
     print("=" * 60)
-    print("GPT-4o Results Visualization")
+    print("GPT-4o 32×32 Results Visualization")
     print("=" * 60)
     
     # Create output directory
-    output_dir = 'gpt_4o_visualizations'
+    output_dir = 'gpt_4o_visualizations_32x32'
     os.makedirs(output_dir, exist_ok=True)
     print(f"Output directory: {output_dir}/")
     
@@ -257,32 +257,32 @@ def main():
     plot_confusion_matrix(
         results['confusion_matrix'], 
         CLASSES, 
-        os.path.join(output_dir, 'gpt4o_confusion_matrix.png')
+        os.path.join(output_dir, 'gpt4o_32x32_confusion_matrix.png')
     )
     
     plot_per_class_performance(
         results, 
-        os.path.join(output_dir, 'gpt4o_per_class_performance.png')
+        os.path.join(output_dir, 'gpt4o_32x32_per_class_performance.png')
     )
     
     plot_class_accuracy_comparison(
         results, 
-        os.path.join(output_dir, 'gpt4o_class_accuracy.png')
+        os.path.join(output_dir, 'gpt4o_32x32_class_accuracy.png')
     )
     
     plot_summary_dashboard(
         results, 
-        os.path.join(output_dir, 'gpt4o_summary_dashboard.png')
+        os.path.join(output_dir, 'gpt4o_32x32_summary_dashboard.png')
     )
     
     print("\n" + "=" * 60)
     print("VISUALIZATION COMPLETE")
     print("=" * 60)
     print(f"\nGenerated files (in {output_dir}/):")
-    print("  - gpt4o_confusion_matrix.png      - Confusion matrix heatmap")
-    print("  - gpt4o_per_class_performance.png - Precision/Recall/F1 by class")
-    print("  - gpt4o_class_accuracy.png        - Per-class accuracy bars")
-    print("  - gpt4o_summary_dashboard.png     - Combined dashboard")
+    print("  - gpt4o_32x32_confusion_matrix.png      - Confusion matrix heatmap")
+    print("  - gpt4o_32x32_per_class_performance.png - Precision/Recall/F1 by class")
+    print("  - gpt4o_32x32_class_accuracy.png        - Per-class accuracy bars")
+    print("  - gpt4o_32x32_summary_dashboard.png     - Combined dashboard")
 
 
 if __name__ == "__main__":
