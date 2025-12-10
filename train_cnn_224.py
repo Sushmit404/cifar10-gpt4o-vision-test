@@ -255,43 +255,82 @@ if torch.cuda.is_available():
     print(f"  GPU: {torch.cuda.get_device_name(0)}")
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.dropout = nn.Dropout2d(0.2)
+        
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+    
+    def forward(self, x):
+        out = torch.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = self.dropout(out)
+        out += self.shortcut(x)
+        out = torch.relu(out)
+        return out
+
 class CustomCNN(nn.Module):
-    """
-    CNN for CIFAR-10: 2 conv blocks + FC head
-    Input: (batch, 3, 224, 224) -> Output: (batch, 10)
-    Upscaled to 224×224 to match GPT-4o Vision input size
-    """
     def __init__(self, num_classes=10, input_size=224):
         super(CustomCNN, self).__init__()
         self.input_size = input_size
         
-        # Conv block 1: 224x224x3 -> 112x112x32
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
+        self.initial_conv = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.layer1 = nn.Sequential(
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64)
+        )
         self.pool1 = nn.MaxPool2d(2, 2)
         
-        # Conv block 2: 112x112x32 -> 56x56x64
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
+        self.layer2 = nn.Sequential(
+            ResidualBlock(64, 128, stride=2),
+            ResidualBlock(128, 128)
+        )
         self.pool2 = nn.MaxPool2d(2, 2)
         
-        # Calculate FC input size: after 2 pooling layers, size is input_size / 4
-        feature_size = input_size // 4  # 224 / 4 = 56
-        fc_input_size = 64 * feature_size * feature_size  # 64 * 56 * 56 = 200,704
+        self.layer3 = nn.Sequential(
+            ResidualBlock(128, 256, stride=2),
+            ResidualBlock(256, 256)
+        )
         
-        # FC head: 200704 -> 128 -> 10
-        self.fc1 = nn.Linear(fc_input_size, 128)
-        self.dropout = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(128, num_classes)
+        self.fc1 = nn.Linear(256 * 14 * 14, 256)
+        self.dropout_fc = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(256, num_classes)
+        
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)
         
     def forward(self, x):
-        x = self.pool1(torch.relu(self.bn1(self.conv1(x))))
-        x = self.pool2(torch.relu(self.bn2(self.conv2(x))))
-        # Dynamically calculate feature map size
-        batch_size = x.size(0)
-        x = x.view(batch_size, -1)
+        x = self.initial_conv(x)
+        x = self.layer1(x)
+        x = self.pool1(x)
+        x = self.layer2(x)
+        x = self.pool2(x)
+        x = self.layer3(x)
+        x = x.view(x.size(0), -1)
         x = torch.relu(self.fc1(x))
-        x = self.dropout(x)
+        x = self.dropout_fc(x)
         return self.fc2(x)
 
 
@@ -351,27 +390,32 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     return stratified_indices
 
 
-def get_data_loaders(batch_size=128, input_size=224):
-    """
-    Load CIFAR-10 with augmentation for training
-    Upscales images to 224×224 using bilinear interpolation (same method as GPT-4o)
-    """
+def _upscale_image(img, size):
     from PIL import Image
-    
-    # Upscale transform: resize to 224×224 using bilinear interpolation (same as GPT-4o)
-    upscale_transform = transforms.Lambda(lambda x: x.resize((input_size, input_size), Image.BILINEAR))
+    return img.resize((size, size), Image.BILINEAR)
+
+def _upscale_to_size(size):
+    from PIL import Image
+    def upscale_fn(img):
+        return img.resize((size, size), Image.BILINEAR)
+    return upscale_fn
+
+def get_data_loaders(batch_size=128, input_size=224):
+    upscale_transform = transforms.Lambda(_upscale_to_size(input_size))
     
     train_transform = transforms.Compose([
-        upscale_transform,  # Upscale first to 224×224 (same as GPT-4o)
+        upscale_transform,
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(input_size, padding=input_size//8),  # Adjust padding for 224
+        transforms.RandomCrop(input_size, padding=input_size//8),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.RandomRotation(10),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
+        transforms.RandomErasing(p=0.1)
     ])
     
-    # Test transform: upscale but no augmentation
     test_transform = transforms.Compose([
-        upscale_transform,  # Upscale to 224×224 (same as GPT-4o)
+        upscale_transform,
         transforms.ToTensor()
     ])
     
@@ -379,7 +423,7 @@ def get_data_loaders(batch_size=128, input_size=224):
     train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=train_transform)
     test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=test_transform)
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
     
     print(f"  Train: {len(train_dataset)}, Test: {len(test_dataset)}")
     print(f"  Input size: {input_size}×{input_size} (upscaled from 32×32 using Image.BILINEAR)")
@@ -401,6 +445,7 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device):
         outputs = model(inputs)
         loss = criterion(outputs, labels)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
         running_loss += loss.item()
@@ -589,9 +634,9 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=100, lr=
     Returns:
         history: Dictionary with training metrics
     """
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     
     history = {'train_loss': [], 'train_acc': [], 'test_loss': [], 'test_acc': [], 'epoch_times': []}
     best_acc = 0.0
@@ -1120,8 +1165,8 @@ def parse_args():
                         help='Flatline detection patience - stops if accuracy unchanged (default: 20)')
     parser.add_argument('--batch-size', type=int, default=128,
                         help='Batch size (default: 128)')
-    parser.add_argument('--lr', type=float, default=0.001,
-                        help='Learning rate (default: 0.001)')
+    parser.add_argument('--lr', type=float, default=0.0001,
+                        help='Learning rate (default: 0.0001 for 224×224)')
     return parser.parse_args()
 
 

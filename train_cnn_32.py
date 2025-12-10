@@ -255,35 +255,72 @@ if torch.cuda.is_available():
     print(f"  GPU: {torch.cuda.get_device_name(0)}")
 
 
-class CustomCNN(nn.Module):
-    """
-    CNN for CIFAR-10: 2 conv blocks + FC head
-    Input: (batch, 3, 32, 32) -> Output: (batch, 10)
-    """
-    def __init__(self, num_classes=10):
-        super(CustomCNN, self).__init__()
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.dropout = nn.Dropout2d(0.2)
         
-        # Conv block 1: 32x32x3 -> 16x16x32
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+    
+    def forward(self, x):
+        out = torch.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = self.dropout(out)
+        out += self.shortcut(x)
+        out = torch.relu(out)
+        return out
+
+class CustomCNN(nn.Module):
+    def __init__(self, num_classes=10, input_size=32):
+        super(CustomCNN, self).__init__()
+        self.input_size = input_size
+        
+        self.initial_conv = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.layer1 = nn.Sequential(
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64)
+        )
         self.pool1 = nn.MaxPool2d(2, 2)
         
-        # Conv block 2: 16x16x32 -> 8x8x64
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
+        self.layer2 = nn.Sequential(
+            ResidualBlock(64, 128, stride=2),
+            ResidualBlock(128, 128)
+        )
         self.pool2 = nn.MaxPool2d(2, 2)
         
-        # FC head: 4096 -> 128 -> 10
-        self.fc1 = nn.Linear(64 * 8 * 8, 128)
-        self.dropout = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(128, num_classes)
+        self.layer3 = nn.Sequential(
+            ResidualBlock(128, 256, stride=2),
+            ResidualBlock(256, 256)
+        )
+        
+        self.fc1 = nn.Linear(256 * 2 * 2, 256)
+        self.dropout_fc = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(256, num_classes)
         
     def forward(self, x):
-        x = self.pool1(torch.relu(self.bn1(self.conv1(x))))
-        x = self.pool2(torch.relu(self.bn2(self.conv2(x))))
-        x = x.view(-1, 64 * 8 * 8)
+        x = self.initial_conv(x)
+        x = self.layer1(x)
+        x = self.pool1(x)
+        x = self.layer2(x)
+        x = self.pool2(x)
+        x = self.layer3(x)
+        x = x.view(x.size(0), -1)
         x = torch.relu(self.fc1(x))
-        x = self.dropout(x)
+        x = self.dropout_fc(x)
         return self.fc2(x)
 
 
@@ -343,13 +380,15 @@ def create_stratified_test_subset(test_dataset, num_samples=2000, seed=42):
     return stratified_indices
 
 
-def get_data_loaders(batch_size=128):
-    """Load CIFAR-10 with augmentation for training"""
+def get_data_loaders(batch_size=128, input_size=32):
     train_transform = transforms.Compose([
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(32, padding=4),
+        transforms.RandomCrop(input_size, padding=4),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.RandomRotation(10),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
+        transforms.RandomErasing(p=0.1)
     ])
     
     test_transform = transforms.Compose([transforms.ToTensor()])
@@ -566,9 +605,9 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=100, lr=
     Returns:
         history: Dictionary with training metrics
     """
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     
     history = {'train_loss': [], 'train_acc': [], 'test_loss': [], 'test_acc': [], 'epoch_times': []}
     best_acc = 0.0
@@ -671,7 +710,7 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=100, lr=
 
 
 def run_epoch_sweep(train_loader, test_dataset, test_indices, epoch_list, lr=0.001, 
-                   early_stopping=False, patience=5, flatline_patience=20):
+                   early_stopping=False, patience=5, flatline_patience=20, input_size=32):
     """
     Run training with different epoch values to find optimal training length.
     
@@ -714,7 +753,7 @@ def run_epoch_sweep(train_loader, test_dataset, test_indices, epoch_list, lr=0.0
         print('─' * 70)
         
         # Create fresh model for each experiment
-        model = CustomCNN().to(device)
+        model = CustomCNN(input_size=input_size).to(device)
         
         history = train_model(
             model, train_loader, test_dataset, test_indices,
@@ -1143,7 +1182,8 @@ def main():
     print(f"\nResults will be saved to: {RESULTS_DIR}/")
     
     # Load data
-    train_loader, test_dataset = get_data_loaders(BATCH_SIZE)
+    INPUT_SIZE = 32
+    train_loader, test_dataset = get_data_loaders(BATCH_SIZE, input_size=INPUT_SIZE)
     test_indices = create_stratified_test_subset(test_dataset)
     
     # Epoch sweep mode: train multiple models with different epoch counts
@@ -1152,7 +1192,7 @@ def main():
             train_loader, test_dataset, test_indices,
             epoch_list=EPOCH_LIST, lr=LEARNING_RATE,
             early_stopping=EARLY_STOPPING, patience=PATIENCE,
-            flatline_patience=args.flatline_patience
+            flatline_patience=args.flatline_patience, input_size=INPUT_SIZE
         )
         
         total_pipeline_time = time.time() - pipeline_start_time
@@ -1170,7 +1210,8 @@ def main():
         return
     
     # Single training mode
-    model = CustomCNN().to(device)
+    INPUT_SIZE = 32
+    model = CustomCNN(input_size=INPUT_SIZE).to(device)
     params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {params:,}")
     
