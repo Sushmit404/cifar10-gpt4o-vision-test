@@ -309,7 +309,7 @@ def plot_confusion_matrix(cm, class_names, save_path, model_name="CNN"):
 
 
 def plot_per_class_performance(results, save_path, model_name="CNN"):
-    """Plot per-class precision, recall, F1 as grouped bar chart"""
+    """Plot per-class precision, recall, and accuracy as grouped bar chart with overall accuracy line"""
     fig, ax = plt.subplots(figsize=(14, 6))
     
     x = np.arange(len(CLASSES))
@@ -317,29 +317,28 @@ def plot_per_class_performance(results, save_path, model_name="CNN"):
     
     precision = [results['per_class_metrics'][c]['precision'] * 100 for c in CLASSES]
     recall = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]
-    f1 = [results['per_class_metrics'][c]['f1'] * 100 for c in CLASSES]
+    accuracy = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]  # Per-class accuracy is recall
     
     bars1 = ax.bar(x - width, precision, width, label='Precision', color='#2E86AB')
     bars2 = ax.bar(x, recall, width, label='Recall', color='#A23B72')
-    bars3 = ax.bar(x + width, f1, width, label='F1-Score', color='#F18F01')
+    bars3 = ax.bar(x + width, accuracy, width, label='Accuracy', color='#F18F01')
     
     ax.set_ylabel('Score (%)', fontsize=12)
     ax.set_xlabel('Class', fontsize=12)
     ax.set_title(f'{model_name} Per-Class Performance', fontsize=14, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(CLASSES, rotation=45, ha='right')
-    ax.legend(loc='lower right')
     
     # Set y-axis limits based on accuracy range
-    max_val = max(max(precision), max(recall), max(f1))
-    min_val = min(min(precision), min(recall), min(f1))
+    max_val = max(max(precision), max(recall), max(accuracy))
+    min_val = min(min(precision), min(recall), min(accuracy))
     y_range = max_val - min_val
     ax.set_ylim([max(0, min_val - y_range * 0.1), min(100, max_val + y_range * 0.1)])
     ax.grid(axis='y', alpha=0.3)
     
-    # Add overall accuracy line
-    ax.axhline(y=results['accuracy'] * 100, color='green', linestyle='--', 
-               linewidth=2, label=f"Overall Accuracy: {results['accuracy']*100:.1f}%")
+    # Add overall accuracy line (same as in class accuracy chart)
+    ax.axhline(y=results['accuracy'] * 100, color='blue', linestyle='--', 
+               linewidth=2, alpha=0.7, label=f"Overall Accuracy: {results['accuracy']*100:.1f}%")
     ax.legend(loc='lower right')
     
     plt.tight_layout()
@@ -429,25 +428,27 @@ def plot_summary_dashboard(results, save_path, model_name="CNN", input_size=32):
         ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
                 f'{acc:.0f}%', ha='center', va='bottom', fontsize=8)
     
-    # Precision/Recall/F1
+    # Precision/Recall/Accuracy
     ax3 = fig.add_subplot(gs[1, 0])
     x = np.arange(len(CLASSES))
     width = 0.25
     precision = [results['per_class_metrics'][c]['precision'] * 100 for c in CLASSES]
     recall = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]
-    f1 = [results['per_class_metrics'][c]['f1'] * 100 for c in CLASSES]
+    accuracy = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]  # Per-class accuracy is recall
     
     ax3.bar(x - width, precision, width, label='Precision', color='#2E86AB')
     ax3.bar(x, recall, width, label='Recall', color='#A23B72')
-    ax3.bar(x + width, f1, width, label='F1', color='#F18F01')
+    ax3.bar(x + width, accuracy, width, label='Accuracy', color='#F18F01')
     ax3.set_xticks(x)
     ax3.set_xticklabels(CLASSES, rotation=45, ha='right', fontsize=9)
     ax3.set_ylabel('Score (%)')
-    ax3.set_title('Precision / Recall / F1', fontsize=12, fontweight='bold')
-    max_val = max(max(precision), max(recall), max(f1))
-    min_val = min(min(precision), min(recall), min(f1))
+    ax3.set_title('Precision / Recall / Accuracy', fontsize=12, fontweight='bold')
+    max_val = max(max(precision), max(recall), max(accuracy))
+    min_val = min(min(precision), min(recall), min(accuracy))
     y_range = max_val - min_val
     ax3.set_ylim([max(0, min_val - y_range * 0.1), min(100, max_val + y_range * 0.1)])
+    # Add overall accuracy line
+    ax3.axhline(y=results['accuracy'] * 100, color='blue', linestyle='--', linewidth=2, alpha=0.7)
     ax3.legend(loc='lower right', fontsize=8)
     ax3.grid(axis='y', alpha=0.3)
     
@@ -625,25 +626,25 @@ def main():
         plot_confusion_matrix(
             enhanced_results['confusion_matrix'],
             CLASSES,
-            os.path.join(output_dir, 'cnn_confusion_matrix.png'),
+            os.path.join(output_dir, '2cnn_confusion_matrix.png'),
             model_name
         )
         
         plot_per_class_performance(
             enhanced_results,
-            os.path.join(output_dir, 'cnn_per_class_performance.png'),
+            os.path.join(output_dir, '2cnn_per_class_performance.png'),
             model_name
         )
         
         plot_class_accuracy_comparison(
             enhanced_results,
-            os.path.join(output_dir, 'cnn_class_accuracy.png'),
+            os.path.join(output_dir, '2cnn_class_accuracy.png'),
             model_name
         )
         
         plot_summary_dashboard(
             enhanced_results,
-            os.path.join(output_dir, 'cnn_summary_dashboard.png'),
+            os.path.join(output_dir, '2cnn_summary_dashboard.png'),
             model_name,
             input_size
         )
