@@ -53,17 +53,36 @@
 
 **Title:** Fair Comparison: Stratified Sampling
 
+**The Problem:**
+• CIFAR-10 test set = 10,000 images
+• Testing all with API = expensive & slow
+• Need smaller BUT representative subset
+
+**Our Solution - Stratified Random Sampling:**
+
+1. Group 10,000 images by class label (0-9)
+2. Randomly select 200 indices per class
+3. Use seed=42 for reproducibility
+4. Save indices to JSON file
+
 **Key Numbers:**
-• 2,000 test images (from 10,000)
-• Exactly 200 per class
-• Same images for BOTH models
+| Original | Subset | Per Class | Seed |
+|----------|--------|-----------|------|
+| 10,000 | 2,000 | 200 | 42 |
 
-**Why?**
-✅ Fair comparison
-✅ No class bias
-✅ Affordable (~$20 API cost)
+**Technical Detail (mention briefly):**
+```python
+np.random.choice(class_indices, size=200, replace=False)
+# Saved to: stratified_subset_2000.json
+```
 
-**Visual:** Pie chart showing equal class distribution
+**Why This Matters:**
+✅ Both models tested on IDENTICAL 2,000 images
+✅ Perfect class balance (no bias)
+✅ Reproducible (seed=42 → same indices)
+✅ Affordable (~$3 API cost, not $15)
+
+**Visual:** Bar chart showing 200 images per class
 
 ---
 
@@ -128,7 +147,7 @@ Fully Connected
 
 **Specs:**
 • 1.8 trillion parameters
-• Cost: ~$0.01 per image
+• Cost: ~$0.0008 per image (~$3 total!)
 • Zero training on CIFAR-10
 
 ---
@@ -156,10 +175,18 @@ Fully Connected
 
 **Title:** 💸 Fun Fact: The API Adventure
 
-**Numbers:**
-• 4,000 API calls total
-• ~$40 spent
-• 80 minutes of waiting
+**The Numbers:**
+| Stat | Value |
+|------|-------|
+| API calls | 4,000 |
+| Total tokens | 1,196,000 |
+| Total cost | **$3.04** ☕ |
+| Cost per image | $0.00076 |
+
+**Why So Cheap?**
+• Tiny 32×32 images = few tokens
+• Short responses ("cat", "dog")
+• GPT-4o: $2.50 per 1M tokens
 
 **Interesting Finding:**
 We tested BOTH:
@@ -167,6 +194,8 @@ We tested BOTH:
 • 32×32 raw → 96.75%
 
 "Upscaling had NO effect!"
+
+**Quote:** "4,000 API calls for $3... less than a coffee!"
 
 ---
 
@@ -189,239 +218,104 @@ GPT-4o has 1,500,000× more parameters!
 
 ---
 
-## SLIDE 11 (IMPROVEMENTS)
+## SLIDE 11 (IMPROVEMENTS + ARCHITECTURE)
 
-**Title:** 🔨 Making Our CNN Stronger
+**Title:** 🔨 How We Improved the CNN
 
-**Architecture Improvements:**
-• ResNet-style residual blocks
-• Skip connections
-• More layers (2 → 6)
-• More channels (64 → 128 → 256)
+**Improvements Applied:**
+| Category | Techniques |
+|----------|------------|
+| Architecture | ResNet blocks, skip connections, 6 conv layers, channels 64→128→256 |
+| Augmentation | ColorJitter, RandomRotation(±10°), RandomErasing, RandomCrop |
+| Training | Label smoothing, CosineAnnealingLR, Early stopping |
 
-**Data Augmentation:**
-• Random flips & crops
-• Color jitter
-• Random rotation (±10°)
-• Random erasing
-
-**Training Techniques:**
-• Label smoothing (0.1)
-• Cosine learning rate schedule
-• Early stopping (patience=20)
-
----
-
-## SLIDE 12 (IMPROVED ARCHITECTURE)
-
-**Title:** The Improved CNN Architecture
-
-**Diagram:**
+**Architecture (simplified):**
 ```
-32×32 Input
-    ↓
-Initial Conv (64 filters)
-    ↓
-ResNet Block × 2 (64 channels)
-    ↓
-ResNet Block × 2 (128 channels)
-    ↓
-ResNet Block × 2 (256 channels)
-    ↓
-Fully Connected → 10 classes
+32×32 → Conv(64) → ResNet×2(64) → ResNet×2(128) → ResNet×2(256) → FC → 10 classes
 ```
 
-**What's a Residual Block?**
-"Skip connections let gradients flow directly!"
+**Key Insight:** Skip connections let gradients flow → enables deeper training
 
-**Visual:** Show skip connection diagram
-
----
-
-## SLIDE 13 (TRAINING FUN FACT)
-
-**Title:** 🔥 Training the Beast
-
-**Stats:**
-• 43 minutes of training
-• 119 epochs (early stopped)
-• GPU temperature: HOT! 🌡️
-
-**The Journey:**
-• Epoch 1: 45%
-• Epoch 50: 85%
-• Epoch 99: 92.10% (best!)
+**Training:** 43 min, 119 epochs, GPU was 🔥 HOT!
 
 ---
 
-## SLIDE 14 (IMPROVED RESULTS)
+## SLIDE 12 (RESULTS + COMPARISON)
 
-**Title:** 🎉 Improved CNN Results
+**Title:** 🎉 Results: 71% → 92%
 
-**BIG NUMBER:** 92.10% Accuracy (+20.55%!)
-
-**Before/After Table:**
-| Class | Before | After | Improvement |
-|-------|--------|-------|-------------|
+**Per-Class Improvement:**
+| Class | Before | After | Δ |
+|-------|--------|-------|---|
 | cat | 42.5% | 84.0% | +41.5% 🚀 |
 | bird | 54.5% | 87.5% | +33.0% |
 | deer | 60.0% | 93.0% | +33.0% |
-| automobile | 86.5% | 98.0% | +11.5% |
+
+**Final Showdown:**
+| Model | Accuracy | Parameters | Cost |
+|-------|----------|------------|------|
+| Baseline CNN | 71.55% | 1.2M | Free |
+| **Improved CNN** | **92.10%** | 2.3M | Free |
+| GPT-4o | 96.75% | 1.8T | ~$3 |
+
+**Gap: 25% → 5% (closed 80%!)** 🎯
 
 ---
 
-## SLIDE 15 (FINAL COMPARISON)
-
-**Title:** 📊 The Final Showdown
-
-**Comparison Table:**
-| Metric | Baseline CNN | Improved CNN | GPT-4o |
-|--------|--------------|--------------|--------|
-| Accuracy | 71.55% | 92.10% | 96.75% |
-| Parameters | 1.2M | 2.3M | 1.8T |
-| Training | 26 min | 43 min | None |
-| Cost/image | Free | Free | $0.01 |
-
-**Gap Reduction:**
-• Before: 25%
-• After: 5%
-• **Closed 80% of the gap!**
-
----
-
-## SLIDE 16 (BAR CHART)
-
-**Title:** Accuracy by Class
-
-**Create bar chart with these values:**
-
-| Class | Baseline | Improved | GPT-4o |
-|-------|----------|----------|--------|
-| airplane | 78.5% | 95.5% | 97.5% |
-| automobile | 86.5% | 98.0% | 97.5% |
-| bird | 54.5% | 87.5% | 95.0% |
-| cat | 42.5% | 84.0% | 94.0% |
-| deer | 60.0% | 93.0% | 96.5% |
-| dog | 69.0% | 86.0% | 93.5% |
-| frog | 80.5% | 93.5% | 93.5% |
-| horse | 81.5% | 93.0% | 98.0% |
-| ship | 79.5% | 95.5% | 99.0% |
-| truck | 83.0% | 95.0% | 98.5% |
-
-**Visual:** Grouped bar chart (3 bars per class)
-
----
-
-## SLIDE 17 (CONFUSIONS)
-
-**Title:** 🔍 Where Models Struggle
-
-**The Cat-Dog Problem:**
-| Model | Cat → Dog | Dog → Cat |
-|-------|-----------|-----------|
-| Baseline | 56 | 33 |
-| Improved | 12 | 16 |
-| GPT-4o | 5 | 6 |
-
-**Why?** "At 32×32 pixels, even WE can't tell them apart!"
-
-**Other Confusions:**
-• Bird ↔ Airplane (both fly!)
-• Automobile ↔ Truck
-• Deer ↔ Horse
-
-**Visual:** Show confused image examples
-
----
-
-## SLIDE 18 (KEY FINDINGS)
+## SLIDE 13 (KEY FINDINGS)
 
 **Title:** 💡 Key Findings
 
-**5 Takeaways:**
+| Finding | Insight |
+|---------|---------|
+| Zero-shot ≠ Unbeatable | GPT-4o wins by only ~5% |
+| Architecture Matters | ResNet + skip connections: +5-8% |
+| Augmentation is Crucial | ColorJitter, RandomErasing: +3-5% |
+| Upscaling = No Effect | GPT-4o: 32×32 = 224×224 (both 96.75%) |
 
-1. **Zero-shot ≠ Unbeatable**
-   GPT-4o wins, but only by 5%
-
-2. **Architecture Matters**
-   ResNet blocks: +5-8% accuracy
-
-3. **Data Augmentation is Crucial**
-   ColorJitter, RandomErasing: +3-5%
-
-4. **Upscaling Doesn't Help GPT-4o**
-   32×32 = 224×224 (both 96.75%)
-
-5. **Trade-offs Exist**
-   CNN: Free & fast | GPT-4o: Expensive but zero-shot
+**Common Confusions (All Models):**
+• Cat ↔ Dog (fur at 32×32)
+• Bird ↔ Airplane (flying objects)
+• Auto ↔ Truck (vehicle shapes)
 
 ---
 
-## SLIDE 19 (CONCLUSIONS)
+## SLIDE 14 (CONCLUSIONS + FUTURE)
 
-**Title:** 🎯 Conclusions
-
-**Summary Stats:**
-| Achievement | Value |
-|-------------|-------|
-| Baseline → Improved | +21% accuracy |
-| Gap closed | 25% → 5% |
-| Gap reduction | 80% |
+**Title:** 🚀 Conclusions & Future Work
 
 **Main Takeaways:**
 ✅ Custom CNNs CAN compete with massive models
 ✅ Systematic improvements work (+21%)
-✅ Trade-offs matter (cost vs accuracy vs speed)
+✅ Trade-offs: CNN = free & fast | GPT-4o = accurate & zero-shot
 ✅ Zero-shot is powerful but not unbeatable
 
----
-
-## SLIDE 20 (FUTURE WORK)
-
-**Title:** 🔮 Future Work
-
-**If We Had 6 More Months:**
-
-• **Model:** Vision Transformers (ViT), attention mechanisms
-• **Experiments:** Other LLMs (Claude, Gemini), harder datasets
-• **Efficiency:** Quantization, edge deployment
-• **Interpretability:** Grad-CAM visualizations
+**Future Work (If 6 More Months):**
+• Models: Vision Transformers, attention, transfer learning
+• Experiments: Other LLMs (Claude, Gemini), CIFAR-100
+• Analysis: Grad-CAM visualizations
 
 ---
 
-## SLIDE 21 (REFERENCES)
+## SLIDE 15 (REFERENCES + THANK YOU)
 
-**Title:** 📚 References
+**Title:** 📚 References & Thank You
 
-1. CIFAR-10 Dataset - Krizhevsky (2009)
-   https://www.cs.toronto.edu/~kriz/cifar.html
-
-2. GPT-4o Vision - OpenAI (2024)
-   https://platform.openai.com/docs/models/gpt-4o
-
-3. ResNet - He et al. (2016)
-   https://arxiv.org/abs/1512.03385
-
-4. PyTorch - pytorch.org
-
-5. Our Code:
-   github.com/Sushmit404/cifar10-gpt4o-vision-test
-
----
-
-## SLIDE 22 (THANK YOU)
-
-**Title:** Questions?
-
-**Center Text:** Thank You!
+**References:**
+1. CIFAR-10 - Krizhevsky (2009) - cs.toronto.edu/~kriz/cifar.html
+2. GPT-4o - OpenAI (2024) - platform.openai.com/docs/models/gpt-4o
+3. ResNet - He et al. (2016) - arxiv.org/abs/1512.03385
+4. Our Code - github.com/Sushmit404/cifar10-gpt4o-vision-test
 
 **Key Numbers:**
-• Baseline CNN: 71.55%
-• Improved CNN: 92.10%
-• GPT-4o: 96.75%
-• Gap Closed: 80%
+| Model | Accuracy |
+|-------|----------|
+| Baseline CNN | 71.55% |
+| **Improved CNN** | **92.10%** |
+| **GPT-4o** | **96.75%** |
+| **Gap Closed** | **80%** 🎯 |
 
-**GitHub:** github.com/Sushmit404/cifar10-gpt4o-vision-test
+**Questions?**
 
 ---
 
@@ -432,10 +326,10 @@ Fully Connected → 10 classes
 | 1-4 (Intro, Data) | Either | 1.5 |
 | 5-6 (Baseline CNN) | Friend | 1.5 |
 | 7-9 (GPT-4o + Fun) | You | 1.5 |
-| 10-14 (Improvements) | Either | 2.0 |
-| 15-20 (Results, Conclusions) | Either | 1.5 |
+| 10-11 (Improvements) | Either | 1.5 |
+| 12-15 (Results, Conclusions) | Either | 2.0 |
 
-**TOTAL: 8 minutes**
+**TOTAL: 8 minutes (15 slides)**
 
 ---
 
@@ -455,7 +349,7 @@ Use these from your project:
 
 Drop these naturally during presentation:
 
-💬 "Fun fact: those 4,000 API calls cost about $40... but hey, it's for science!"
+💬 "Fun fact: those 4,000 API calls cost about $3... less than a coffee!"
 
 💬 "The GPU was NOT happy during those 43 minutes of training"
 
