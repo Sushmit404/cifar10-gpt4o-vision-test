@@ -48,7 +48,7 @@ Initial Project Setup
 - Gave presentation (both)
 
 ### December 18, 2025
-- Cleaned up code, polished notebook in readme.
+- Cleaned up files, polished notebook in readme.
 
 ---
 
