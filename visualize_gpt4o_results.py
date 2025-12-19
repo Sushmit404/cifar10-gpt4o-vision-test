@@ -207,7 +207,6 @@ def plot_summary_dashboard(results, save_path):
     
     confusion_text = "\n".join([f"  {t} -> {p}: {c} errors" for t, p, c in top_confusions])
     
-    # Find best and worst classes dynamically
     sorted_classes = sorted(CLASSES, key=lambda c: results['per_class_metrics'][c]['recall'], reverse=True)
     best_classes = sorted_classes[:3]
     worst_classes = sorted_classes[-3:]

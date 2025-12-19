@@ -28,89 +28,26 @@ import copy
 from datetime import datetime
 
 def compute_confusion_matrix(y_true, y_pred, num_classes=10):
-    """
-    Manually compute confusion matrix.
-    
-    Mathematical Definition:
-        CM[i,j] = count of samples with true label i and predicted label j
-    
-    The diagonal CM[i,i] represents correct predictions (True Positives for class i)
-    Off-diagonal CM[i,j] (i≠j) represents misclassifications
-    
-    Args:
-        y_true: Ground truth labels
-        y_pred: Predicted labels
-        num_classes: Number of classes
-    
-    Returns:
-        Confusion matrix of shape (num_classes, num_classes)
-    """
     cm = np.zeros((num_classes, num_classes), dtype=np.int32)
-    
     for true_label, pred_label in zip(y_true, y_pred):
         cm[true_label, pred_label] += 1
-    
     return cm
 
 
 def compute_metrics_from_confusion_matrix(cm, class_names=None):
-    """
-    Compute precision, recall, and F1-score from confusion matrix.
-    
-    Mathematical Definitions:
-        For each class i:
-        
-        True Positives (TP_i)  = CM[i,i]
-        False Positives (FP_i) = Σ_j CM[j,i] - CM[i,i] = column sum - diagonal
-        False Negatives (FN_i) = Σ_j CM[i,j] - CM[i,i] = row sum - diagonal
-        
-        Precision_i = TP_i / (TP_i + FP_i)
-            "Of all samples predicted as class i, what fraction are correct?"
-            
-        Recall_i = TP_i / (TP_i + FN_i)
-            "Of all samples that ARE class i, what fraction did we find?"
-            
-        F1_i = 2 * (Precision_i * Recall_i) / (Precision_i + Recall_i)
-            "Harmonic mean of precision and recall"
-            
-        Macro-Average = (1/K) * Σ_i metric_i
-            "Simple average across classes (treats all classes equally)"
-    
-    Args:
-        cm: Confusion matrix (num_classes, num_classes)
-        class_names: Optional list of class names
-    
-    Returns:
-        Dictionary containing per-class and aggregate metrics
-    """
     num_classes = cm.shape[0]
-    
-    # Initialize arrays
     precision = np.zeros(num_classes)
     recall = np.zeros(num_classes)
     f1 = np.zeros(num_classes)
-    support = np.zeros(num_classes)  # Number of samples per class
+    support = np.zeros(num_classes)
     
     for i in range(num_classes):
-        # True Positives: diagonal element
         tp = cm[i, i]
-        
-        # False Positives: column sum minus diagonal (predicted i but wasn't i)
         fp = np.sum(cm[:, i]) - tp
-        
-        # False Negatives: row sum minus diagonal (was i but not predicted i)
         fn = np.sum(cm[i, :]) - tp
-        
-        # Support: total samples of class i
         support[i] = np.sum(cm[i, :])
-        
-        # Precision: TP / (TP + FP)
         precision[i] = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        
-        # Recall: TP / (TP + FN)
         recall[i] = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        
-        # F1: Harmonic mean of precision and recall
         if precision[i] + recall[i] > 0:
             f1[i] = 2 * (precision[i] * recall[i]) / (precision[i] + recall[i])
         else:
@@ -134,7 +71,7 @@ def compute_metrics_from_confusion_matrix(cm, class_names=None):
             'recall': np.average(recall, weights=support),
             'f1': np.average(f1, weights=support)
         },
-        'accuracy': np.trace(cm) / np.sum(cm)  # Sum of diagonal / total
+        'accuracy': np.trace(cm) / np.sum(cm)
     }
     
     return metrics
@@ -542,7 +479,7 @@ def plot_per_class_performance(results, save_path, model_name="CNN"):
     
     precision = [results['per_class_metrics'][c]['precision'] * 100 for c in CLASSES]
     recall = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]
-    accuracy = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]  # Per-class accuracy is recall
+    accuracy = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]
     
     bars1 = ax.bar(x - width, precision, width, label='Precision', color='#2E86AB')
     bars2 = ax.bar(x, recall, width, label='Recall', color='#A23B72')
@@ -554,14 +491,11 @@ def plot_per_class_performance(results, save_path, model_name="CNN"):
     ax.set_xticks(x)
     ax.set_xticklabels(CLASSES, rotation=45, ha='right')
     
-    # Set y-axis limits based on accuracy range
     max_val = max(max(precision), max(recall), max(accuracy))
     min_val = min(min(precision), min(recall), min(accuracy))
     y_range = max_val - min_val
     ax.set_ylim([max(0, min_val - y_range * 0.1), min(100, max_val + y_range * 0.1)])
     ax.grid(axis='y', alpha=0.3)
-    
-    # Add overall accuracy line
     ax.axhline(y=results['accuracy'] * 100, color='blue', linestyle='--', 
                linewidth=2, alpha=0.7, label=f"Overall Accuracy: {results['accuracy']*100:.1f}%")
     ax.legend(loc='lower right')
@@ -659,7 +593,7 @@ def plot_summary_dashboard(results, save_path, model_name="CNN", input_size=32):
     width = 0.25
     precision = [results['per_class_metrics'][c]['precision'] * 100 for c in CLASSES]
     recall = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]
-    accuracy = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]  # Per-class accuracy is recall
+    accuracy = [results['per_class_metrics'][c]['recall'] * 100 for c in CLASSES]
     
     ax3.bar(x - width, precision, width, label='Precision', color='#2E86AB')
     ax3.bar(x, recall, width, label='Recall', color='#A23B72')
@@ -681,7 +615,6 @@ def plot_summary_dashboard(results, save_path, model_name="CNN", input_size=32):
     ax4 = fig.add_subplot(gs[1, 1])
     ax4.axis('off')
     
-    # Find most confused pairs
     cm_no_diag = cm.copy()
     np.fill_diagonal(cm_no_diag, 0)
     top_confusions = []
@@ -693,7 +626,6 @@ def plot_summary_dashboard(results, save_path, model_name="CNN", input_size=32):
     
     confusion_text = "\n".join([f"  {t} -> {p}: {c} errors" for t, p, c in top_confusions])
     
-    # Find best and worst classes
     sorted_classes = sorted(CLASSES, key=lambda c: results['per_class_metrics'][c]['recall'], reverse=True)
     best_classes = sorted_classes[:3]
     worst_classes = sorted_classes[-3:]
@@ -797,16 +729,13 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=100, lr=
         if verbose:
             print(f"Train: {train_acc:.2f}% | Test: {test_acc:.2f}% | Time: {epoch_time:.1f}s")
         
-        # Check for flatline (no change in accuracy)
         if last_test_acc is not None:
-            # Consider unchanged if difference is less than 0.01% (essentially flat)
             if abs(test_acc - last_test_acc) < 0.01:
                 epochs_without_change += 1
             else:
                 epochs_without_change = 0
         last_test_acc = test_acc
         
-        # Check for improvement
         if test_acc > best_acc:
             best_acc = test_acc
             epochs_without_improvement = 0
@@ -824,7 +753,6 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=100, lr=
         else:
             epochs_without_improvement += 1
         
-        # Check early stopping conditions
         if early_stopping and epochs_without_improvement >= patience:
             stopped_reason = f"No improvement for {patience} epochs"
             if verbose:
@@ -832,7 +760,6 @@ def train_model(model, train_loader, test_dataset, test_indices, epochs=100, lr=
                 print(f"  Stopped at epoch {epoch+1}, best accuracy was {best_acc:.2f}%")
             break
         
-        # Check flatline condition (always enabled, not just when early_stopping is True)
         if epochs_without_change >= flatline_patience:
             stopped_reason = f"Accuracy flatlined for {flatline_patience} epochs"
             if verbose:
@@ -951,7 +878,6 @@ def run_epoch_sweep(train_loader, test_dataset, test_indices, epoch_list, lr=0.0
     
     # Save sweep results
     sweep_results_path = os.path.join(RESULTS_DIR, 'epoch_sweep_results.json')
-    # Convert numpy types for JSON serialization
     serializable_results = {
         'epoch_values': [int(e) for e in sweep_results['epoch_values']],
         'accuracies': [float(a) for a in sweep_results['accuracies']],
@@ -982,7 +908,7 @@ def plot_epoch_sweep_comparison(sweep_results):
     
     epochs = sweep_results['epoch_values']
     accuracies = sweep_results['accuracies']
-    times = [t/60 for t in sweep_results['training_times']]  # Convert to minutes
+    times = [t/60 for t in sweep_results['training_times']]
     best_idx = np.argmax(accuracies)
     
     # Color scheme
@@ -1107,24 +1033,19 @@ def plot_training_history(history, epochs=20):
     ax1.plot(epochs_list, history['train_loss'], label='Train Loss', marker='o', linewidth=2)
     ax1.plot(epochs_list, history['test_loss'], label='Test Loss', marker='s', linewidth=2)
     
-    # Fit exponential decay: L(t) = a·e^(-bt) + c
-    try:
-        def exp_decay(t, a, b, c):
-            return a * np.exp(-b * np.array(t)) + c
-        
-        # Fit to test loss (more stable)
-        if len(history['test_loss']) >= 5:
-            popt, _ = curve_fit(exp_decay, epochs_list, history['test_loss'], 
-                              p0=[history['test_loss'][0], 0.1, history['test_loss'][-1]])
-            fit_epochs = np.linspace(1, len(history['test_loss']), 100)
-            fit_loss = exp_decay(fit_epochs, *popt)
-            ax1.plot(fit_epochs, fit_loss, '--', color='red', alpha=0.5, 
-                    label=f'Exp Fit: L(t)={popt[0]:.3f}·e^(-{popt[1]:.3f}t)+{popt[2]:.3f}')
-            ax1.text(0.05, 0.95, f'Decay Rate α = {popt[1]:.4f}', 
-                    transform=ax1.transAxes, verticalalignment='top',
-                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-    except:
-        pass
+    def exp_decay(t, a, b, c):
+        return a * np.exp(-b * np.array(t)) + c
+    
+    if len(history['test_loss']) >= 5:
+        popt, _ = curve_fit(exp_decay, epochs_list, history['test_loss'], 
+                          p0=[history['test_loss'][0], 0.1, history['test_loss'][-1]])
+        fit_epochs = np.linspace(1, len(history['test_loss']), 100)
+        fit_loss = exp_decay(fit_epochs, *popt)
+        ax1.plot(fit_epochs, fit_loss, '--', color='red', alpha=0.5, 
+                label=f'Exp Fit: L(t)={popt[0]:.3f}·e^(-{popt[1]:.3f}t)+{popt[2]:.3f}')
+        ax1.text(0.05, 0.95, f'Decay Rate α = {popt[1]:.4f}', 
+                transform=ax1.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     ax1.set_xlabel('Epoch', fontsize=11)
     ax1.set_ylabel('Loss', fontsize=11)
@@ -1194,9 +1115,7 @@ def plot_training_history(history, epochs=20):
     ax4.set_title('Generalization Gap (Overfitting Indicator)', fontsize=12, fontweight='bold')
     ax4.grid(True, alpha=0.3)
     
-    # Plot 5: Learning rate schedule
     ax5 = fig.add_subplot(gs[2, 0])
-    # Calculate LR schedule: lr * (gamma ^ floor(epoch / step_size))
     initial_lr = 0.001
     step_size = 10
     gamma = 0.1
@@ -1213,10 +1132,7 @@ def plot_training_history(history, epochs=20):
     ax6 = fig.add_subplot(gs[2, 1])
     ax6.axis('off')
     
-    # GPT-4o accuracy for comparison
     GPT4O_ACCURACY = 96.8
-    
-    # Calculate statistics
     final_train_loss = history['train_loss'][-1]
     final_test_loss = history['test_loss'][-1]
     final_train_acc = history['train_acc'][-1]
@@ -1224,10 +1140,7 @@ def plot_training_history(history, epochs=20):
     best_test_acc = max(history['test_acc'])
     best_epoch = history['test_acc'].index(best_test_acc) + 1
     
-    # Loss improvement
     loss_improvement = (history['test_loss'][0] - final_test_loss) / history['test_loss'][0] * 100
-    
-    # Accuracy improvement rate (last 5 epochs)
     if len(history['test_acc']) >= 5:
         recent_improvement = history['test_acc'][-1] - history['test_acc'][-5]
     else:
@@ -1300,7 +1213,7 @@ def main():
     LEARNING_RATE = args.lr
     EARLY_STOPPING = args.early_stopping
     PATIENCE = args.patience
-    NUM_TEST_SAMPLES = 2000  # Stratified subset for fair comparison with GPT-4o
+    NUM_TEST_SAMPLES = 2000
     
     # Parse epochs
     if args.sweep:
@@ -1406,7 +1319,6 @@ def main():
     results = final_evaluation(model, test_dataset, test_indices, device)
     eval_time = time.time() - eval_start_time
     
-    # Generate per-class metrics and visualizations
     print("\nGenerating per-class metrics and visualizations...")
     per_class_metrics = format_per_class_metrics(results['metrics'], CLASSES)
     

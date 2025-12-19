@@ -1,8 +1,8 @@
 """
-GPT-4o Vision Evaluation on CIFAR-10 - NO UPSCALING
+GPT-4o Vision Evaluation on CIFAR-10 
 CS260 Final Project
 
-This script tests GPT-4o with RAW 32x32 pixel images (no upscaling)
+This script tests GPT-4o with RAW 32x32 pixel images
 to compare against the upscaled 224x224 version.
 
 Same methodology, just no resize step.
@@ -28,22 +28,21 @@ load_dotenv()
 CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
            'dog', 'frog', 'horse', 'ship', 'truck']
 
-# Configuration - NO UPSCALING
+# GPT API configuration
 CONFIG = {
     'model': 'gpt-4o',
     'max_tokens': 10,
-    'image_size': 32,  # RAW 32x32 - NO UPSCALING!
-    'upscale': False,  # Disabled!
+    'image_size': 32,
+    'upscale': False,
     'checkpoint_interval': 50,
     'retry_attempts': 3,
     'retry_delay': 2,
     'rate_limit_delay': 0.5,
 }
 
-
+# Load the dataset and testing indices
 def load_cifar10_test():
-    """Load CIFAR-10 test dataset"""
-    print("📦 Loading CIFAR-10 test dataset...")
+    print("Loading CIFAR-10 test dataset...")
     transform = transforms.Compose([transforms.ToTensor()])
     
     test_data = datasets.CIFAR10(
@@ -53,50 +52,34 @@ def load_cifar10_test():
         transform=transform
     )
     
-    print(f"✅ Loaded {len(test_data)} test images")
+    print(f"Loaded {len(test_data)} test images")
     return test_data
 
 
 def load_stratified_indices(filename='stratified_subset_2000.json'):
-    """Load the stratified subset indices"""
-    print(f"📄 Loading indices from {filename}...")
+    print(f"Loading indices from {filename}...")
     
     with open(filename, 'r') as f:
         subset_info = json.load(f)
     
     indices = subset_info['indices']
-    print(f"✅ Loaded {len(indices)} image indices")
+    print(f"Loaded {len(indices)} image indices")
     return indices, subset_info
 
 
+# Convert PyTorch tensor to base64-encoded PNG
 def tensor_to_base64_raw(tensor):
-    """
-    Convert PyTorch tensor to base64-encoded PNG - NO UPSCALING!
-    
-    Args:
-        tensor: PyTorch tensor (C, H, W) with values in [0, 1]
-    
-    Returns:
-        Base64-encoded PNG string (32x32 pixels)
-    """
-    # Convert tensor → uint8 array (H, W, C)
     arr = (tensor.numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
     img = Image.fromarray(arr)
-    
-    # NO UPSCALING - Keep original 32x32 size!
-    # img = img.resize((224, 224), Image.BILINEAR)  # COMMENTED OUT!
-    
-    # Encode as PNG
     buffer = io.BytesIO()
     img.save(buffer, format='PNG')
     png_bytes = buffer.getvalue()
-    
-    # Convert to base64
     return base64.b64encode(png_bytes).decode('utf-8')
 
 
+# Normalize prediction to match CIFAR-10 classes from possible deviations
+# i.e. car is an automobile 
 def normalize_prediction(pred):
-    """Normalize prediction to match CIFAR-10 classes"""
     pred = pred.lower().strip()
     
     if pred in CLASSES:
@@ -128,7 +111,6 @@ def normalize_prediction(pred):
 
 
 def load_checkpoint(checkpoint_file):
-    """Load checkpoint if exists"""
     if os.path.exists(checkpoint_file):
         with open(checkpoint_file, 'r') as f:
             return json.load(f)
@@ -146,10 +128,7 @@ def save_checkpoint(checkpoint_file, results, processed_indices):
         json.dump(checkpoint, f)
 
 
-def evaluate_gpt4o_no_upscale(test_data, indices, output_dir='results_gpt4o_32x32'):
-    """
-    Evaluation with RAW 32x32 images (no upscaling)
-    """
+def evaluate_gpt4o(test_data, indices, output_dir='results_gpt4o_32x32'):
     os.makedirs(output_dir, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -158,27 +137,26 @@ def evaluate_gpt4o_no_upscale(test_data, indices, output_dir='results_gpt4o_32x3
     
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("❌ ERROR: OPENAI_API_KEY not found!")
+        print("ERROR: OPENAI_API_KEY not found!")
         return None
     
     client = OpenAI(api_key=api_key)
-    print("✅ OpenAI client initialized")
+    print("OpenAI client initialized")
     
-    # Load checkpoint if exists
     checkpoint = load_checkpoint(checkpoint_file)
     if checkpoint:
         results = checkpoint['results']
         processed_set = set(checkpoint['processed_indices'])
-        print(f"📂 Resuming from checkpoint: {len(processed_set)} images already processed")
+        print(f"Resuming from checkpoint: {len(processed_set)} images already processed")
     else:
         results = []
         processed_set = set()
     
     remaining_indices = [idx for idx in indices if idx not in processed_set]
     
-    print(f"\n🔍 Evaluating GPT-4o Vision on {len(remaining_indices)} images...")
+    print(f"\nEvaluating GPT-4o Vision on {len(remaining_indices)} images...")
     print(f"   Model: {CONFIG['model']}")
-    print(f"   ⚠️  Image size: {CONFIG['image_size']}x{CONFIG['image_size']} (RAW - NO UPSCALING!)")
+    print(f"   Image size: {CONFIG['image_size']}x{CONFIG['image_size']}")
     print(f"   Estimated cost: ~${len(remaining_indices) * 0.01:.2f}")
     print()
     
@@ -191,7 +169,6 @@ def evaluate_gpt4o_no_upscale(test_data, indices, output_dir='results_gpt4o_32x3
         img_tensor, label = test_data[idx]
         true_label = CLASSES[label]
         
-        # Convert to base64 - NO UPSCALING!
         img_base64 = tensor_to_base64_raw(img_tensor)
         
         prediction = None
@@ -231,7 +208,7 @@ def evaluate_gpt4o_no_upscale(test_data, indices, output_dir='results_gpt4o_32x3
                     time.sleep(CONFIG['retry_delay'] * (attempt + 1))
                 else:
                     prediction = 'error'
-                    print(f"\n⚠️  Failed: {error_msg}")
+                    print(f"\nFailed: {error_msg}")
         
         is_correct = (prediction == true_label)
         result = {
@@ -241,7 +218,7 @@ def evaluate_gpt4o_no_upscale(test_data, indices, output_dir='results_gpt4o_32x3
             'raw_prediction': raw_prediction,
             'correct': is_correct,
             'error': error_msg if prediction == 'error' else None,
-            'image_size': '32x32'  # Mark as raw size
+            'image_size': '32x32'
         }
         results.append(result)
         processed_set.add(idx)
@@ -264,18 +241,17 @@ def evaluate_gpt4o_no_upscale(test_data, indices, output_dir='results_gpt4o_32x3
     pbar.close()
     save_checkpoint(checkpoint_file, results, list(processed_set))
     
-    # Calculate metrics
     final_results = calculate_metrics(results)
     final_results['config'] = CONFIG
     final_results['timestamp'] = timestamp
     final_results['total_images'] = len(indices)
-    final_results['image_size'] = '32x32 (no upscaling)'
+    final_results['image_size'] = '32x32'
     final_results['raw_results'] = results
     
     with open(results_file, 'w') as f:
         json.dump(final_results, f, indent=2)
     
-    print(f"\n✅ Results saved to {results_file}")
+    print(f"\nResults saved to {results_file}")
     print_summary(final_results)
     
     return final_results
@@ -347,21 +323,20 @@ def calculate_metrics(results):
 
 
 def print_summary(results):
-    """Print evaluation summary"""
     print("\n" + "=" * 60)
-    print("📊 GPT-4o VISION EVALUATION - 32x32 RAW (NO UPSCALING)")
+    print("GPT-4o VISION EVALUATION - 32x32 RAW")
     print("=" * 60)
     
-    print(f"\n🎯 Overall Accuracy: {results['accuracy']*100:.2f}%")
+    print(f"\nOverall Accuracy: {results['accuracy']*100:.2f}%")
     print(f"   Correct: {results['correct']}/{results['total_valid']}")
     print(f"   Errors: {results['total_errors']}")
     
-    print(f"\n📈 Macro Metrics:")
+    print(f"\nMacro Metrics:")
     print(f"   Precision: {results['macro_precision']*100:.2f}%")
     print(f"   Recall:    {results['macro_recall']*100:.2f}%")
     print(f"   F1 Score:  {results['macro_f1']*100:.2f}%")
     
-    print(f"\n📊 Per-Class Performance:")
+    print(f"\nPer-Class Performance:")
     print("-" * 45)
     print(f"{'Class':<12} {'Precision':>10} {'Recall':>10} {'F1':>10}")
     print("-" * 45)
@@ -371,14 +346,13 @@ def print_summary(results):
         print(f"{c:<12} {m['precision']*100:>9.1f}% {m['recall']*100:>9.1f}% {m['f1']*100:>9.1f}%")
     
     print("-" * 45)
-    print("\n✅ Evaluation complete!")
+    print("\nEvaluation complete!")
     print("=" * 60)
 
-
+# Main function
 def main():
-    """Main function"""
     print("=" * 60)
-    print("  GPT-4o Vision Evaluation - RAW 32x32 (NO UPSCALING)")
+    print("  GPT-4o Vision Evaluation - RAW 32x32")
     print("  CS260 Final Project - Ablation Study")
     print("=" * 60)
     
@@ -386,8 +360,8 @@ def main():
     indices, subset_info = load_stratified_indices('stratified_subset_2000.json')
     
     estimated_cost = len(indices) * 0.01
-    print(f"\n⚠️  COST WARNING: {len(indices)} API calls (~${estimated_cost:.2f})")
-    print(f"⚠️  Testing with RAW 32x32 images (no upscaling)")
+    print(f"\nCOST WARNING: {len(indices)} API calls (~${estimated_cost:.2f})")
+    print(f"Testing with RAW 32x32 images")
     print()
     
     response = input("Continue? (y/n): ").strip().lower()
@@ -395,14 +369,12 @@ def main():
         print("Cancelled.")
         return
     
-    results = evaluate_gpt4o_no_upscale(test_data, indices, output_dir='results_gpt4o_32x32')
+    results = evaluate_gpt4o(test_data, indices, output_dir='results_gpt4o_32x32')
     
     if results:
-        print(f"\n🎉 GPT-4o (32x32) Accuracy: {results['accuracy']*100:.2f}%")
-        print(f"📊 Compare with 224x224 upscaled version!")
+        print(f"\nGPT-4o (32x32) Accuracy: {results['accuracy']*100:.2f}%")
+        print(f"Compare with 224x224 upscaled version!")
 
 
 if __name__ == "__main__":
     main()
-
-
