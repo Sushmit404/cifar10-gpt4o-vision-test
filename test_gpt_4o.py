@@ -256,9 +256,8 @@ def evaluate_gpt4o(test_data, indices, output_dir='results_gpt4o_32x32'):
     
     return final_results
 
-
+# Calculate evaluation metrics such as accuracy, precision, recall
 def calculate_metrics(results):
-    """Calculate evaluation metrics"""
     valid_results = [r for r in results if r['prediction'] != 'error']
     errors = [r for r in results if r['prediction'] == 'error']
     
