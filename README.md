@@ -44,6 +44,12 @@ Initial Project Setup
 - Updating slides (both)
 - Rehearsing presentation (both)
 
+### December 11, 2025
+- Gave presentation (both)
+
+### December 18, 2025
+- Cleaned up code, polished notebook in readme.
+
 ---
 
 ## References

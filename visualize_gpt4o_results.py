@@ -41,7 +41,7 @@ def plot_confusion_matrix(cm, class_names, save_path):
            yticklabels=class_names,
            ylabel='True Label', 
            xlabel='Predicted Label', 
-           title='GPT-4o Confusion Matrix (32×32 Non-Upscaled)')
+           title='GPT-4o Confusion Matrix')
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
     
     thresh = cm_norm.max() / 2.
@@ -73,7 +73,7 @@ def plot_per_class_performance(results, save_path):
     
     ax.set_ylabel('Score (%)', fontsize=12)
     ax.set_xlabel('Class', fontsize=12)
-    ax.set_title('GPT-4o Per-Class Performance (32×32 Non-Upscaled)', fontsize=14, fontweight='bold')
+    ax.set_title('GPT-4o Per-Class Performance', fontsize=14, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(CLASSES, rotation=45, ha='right')
     
@@ -111,7 +111,7 @@ def plot_class_accuracy_comparison(results, save_path):
     
     ax.set_ylabel('Accuracy (%)', fontsize=12)
     ax.set_xlabel('Class', fontsize=12)
-    ax.set_title(f'GPT-4o Per-Class Accuracy (32×32 Non-Upscaled) - Overall: {results["accuracy"]*100:.2f}%', 
+    ax.set_title(f'GPT-4o Per-Class Accuracy - Overall: {results["accuracy"]*100:.2f}%', 
                  fontsize=14, fontweight='bold')
     ax.set_ylim([90, 102])
     ax.axhline(y=results['accuracy'] * 100, color='blue', linestyle='--', 
@@ -207,9 +207,13 @@ def plot_summary_dashboard(results, save_path):
     
     confusion_text = "\n".join([f"  {t} -> {p}: {c} errors" for t, p, c in top_confusions])
     
+    # Find best and worst classes dynamically
+    sorted_classes = sorted(CLASSES, key=lambda c: results['per_class_metrics'][c]['recall'], reverse=True)
+    best_classes = sorted_classes[:3]
+    worst_classes = sorted_classes[-3:]
+    
     summary = f"""
 GPT-4o CIFAR-10 EVALUATION SUMMARY
-32×32 Non-Upscaled Images
 {'='*45}
 
 Overall Metrics:
@@ -221,14 +225,14 @@ Overall Metrics:
   Macro F1:        {results['macro_f1']*100:.2f}%
 
 Best Performing Classes:
-  ship:     {results['per_class_metrics']['ship']['recall']*100:.1f}%
-  airplane: {results['per_class_metrics']['airplane']['recall']*100:.1f}%
-  horse:    {results['per_class_metrics']['horse']['recall']*100:.1f}%
+  {best_classes[0]}:     {results['per_class_metrics'][best_classes[0]]['recall']*100:.1f}%
+  {best_classes[1]}: {results['per_class_metrics'][best_classes[1]]['recall']*100:.1f}%
+  {best_classes[2]}:    {results['per_class_metrics'][best_classes[2]]['recall']*100:.1f}%
 
 Most Challenging Classes:
-  cat:      {results['per_class_metrics']['cat']['recall']*100:.1f}%
-  dog:      {results['per_class_metrics']['dog']['recall']*100:.1f}%
-  frog:     {results['per_class_metrics']['frog']['recall']*100:.1f}%
+  {worst_classes[0]}:      {results['per_class_metrics'][worst_classes[0]]['recall']*100:.1f}%
+  {worst_classes[1]}:      {results['per_class_metrics'][worst_classes[1]]['recall']*100:.1f}%
+  {worst_classes[2]}:     {results['per_class_metrics'][worst_classes[2]]['recall']*100:.1f}%
 
 Top Confusion Pairs:
 {confusion_text}
@@ -238,7 +242,7 @@ Top Confusion Pairs:
             verticalalignment='top', transform=ax4.transAxes,
             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
     
-    plt.suptitle('GPT-4o Vision - CIFAR-10 Evaluation Results (32×32 Non-Upscaled)', 
+    plt.suptitle('GPT-4o Vision - CIFAR-10 Evaluation Results', 
                  fontsize=16, fontweight='bold', y=0.98)
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {save_path}")
